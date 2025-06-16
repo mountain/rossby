@@ -1,4 +1,4 @@
-# rossby: The Instant Spatio-Temporal Database
+# Rossby: The Instant Spatio-Temporal Database
 
 [![CI](https://github.com/mountain/rossby/actions/workflows/ci.yml/badge.svg)](https://github.com/mountain/rossby/actions/workflows/ci.yml)
 [![Crates.io](https://img.shields.io/crates/v/rossby.svg)](https://crates.io/crates/rossby)
