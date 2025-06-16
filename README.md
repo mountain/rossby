@@ -1,8 +1,8 @@
 # rossby: The Instant Spatio-Temporal Database
 
-[![CI](https://github.com/your-username/rossby/actions/workflows/ci.yml/badge.svg)](https://github.com/your-username/rossby/actions/workflows/ci.yml)
+[![CI](https://github.com/mountain/rossby/actions/workflows/ci.yml/badge.svg)](https://github.com/mountain/rossby/actions/workflows/ci.yml)
 [![Crates.io](https://img.shields.io/crates/v/rossby.svg)](https://crates.io/crates/rossby)
-[![License: MIT OR Apache-2.0](https://img.shields.io/badge/license-MIT%20OR%20Apache--2.0-blue.svg)](LICENSE-MIT)
+[![License: MIT OR Apache-2.0](https://img.shields.io/badge/license-MIT%20OR%20Apache--2.0-blue.svg)](LICENSE)
 
 **`rossby` is a blazingly fast, in-memory, NetCDF-to-API server written in Rust.**
 
