@@ -178,7 +178,7 @@ fn get_available_memory() -> Option<u64> {
         // Read from /proc/meminfo on Linux
         if let Ok(file) = File::open("/proc/meminfo") {
             let reader = BufReader::new(file);
-            for line in reader.lines().filter_map(Result::ok) {
+            for line in reader.lines().map_while(Result::ok) {
                 if line.starts_with("MemAvailable:") {
                     let parts: Vec<&str> = line.split_whitespace().collect();
                     if parts.len() >= 2 {
