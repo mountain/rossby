@@ -51,8 +51,15 @@ async fn main() -> Result<()> {
         e
     })?;
 
-    info!("Found {} variables", app_state.metadata.variables.len());
-    info!("Found {} dimensions", app_state.metadata.dimensions.len());
+    // Log detailed information about variables
+    let var_names: Vec<_> = app_state.metadata.variables.keys().collect();
+    info!("Found {} variables: {}", var_names.len(), var_names.join(", "));
+    
+    // Log detailed information about dimensions
+    let dim_details: Vec<String> = app_state.metadata.dimensions.iter()
+        .map(|(name, size)| format!("{}={}", name, size))
+        .collect();
+    info!("Found {} dimensions: {}", dim_details.len(), dim_details.join(", "));
 
     // Wrap in Arc for sharing
     let state = Arc::new(app_state);
