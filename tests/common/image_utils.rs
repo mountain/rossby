@@ -62,11 +62,7 @@ pub fn assert_images_approx_eq(
             let actual_pixel = actual.get_pixel(x, y);
             let expected_pixel = expected.get_pixel(x, y);
 
-            for (a, e) in actual_pixel
-                .0
-                .iter()
-                .zip(expected_pixel.0.iter())
-            {
+            for (a, e) in actual_pixel.0.iter().zip(expected_pixel.0.iter()) {
                 let diff = (*a as i16 - *e as i16).unsigned_abs() as u8;
                 if diff > max_diff {
                     diff_count += 1;

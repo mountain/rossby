@@ -44,7 +44,6 @@ async fn start_test_server() -> SocketAddr {
     addr
 }
 
-
 /// Initialize the test environment once
 async fn init_test_environment() -> SocketAddr {
     let addr = start_test_server().await;
