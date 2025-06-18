@@ -240,14 +240,23 @@ fn generate_image(
     let flat_data: Vec<f32> = data.iter().cloned().collect();
     let shape = vec![data_height, data_width];
 
+    // NetCDF data typically has coordinates where:
+    // - First dimension (data_height) corresponds to latitude, with index 0 at the bottom (south)
+    // - Second dimension (data_width) corresponds to longitude, with index 0 at the left (west)
+    //
+    // For proper display on screen:
+    // - Image y=0 should map to the top row of data (north, highest latitude)
+    // - Image y=height-1 should map to the bottom row of data (south, lowest latitude)
+    // - Image x=0 should map to the left column of data (west, lowest longitude)
+    // - Image x=width-1 should map to the right column of data (east, highest longitude)
+
     for y in 0..height {
         for x in 0..width {
             // Map image coordinates to data coordinates (fractional indices)
-            // Map directly with correct orientation:
-            // - x coordinate is mapped from left to right (standard NetCDF longitude order)
-            // - y coordinate is mapped from top to bottom (standard NetCDF latitude order with north at top)
+            // For longitude (x): standard left-to-right mapping
+            // For latitude (y): invert to map screen top to data top (which is highest latitude)
             let data_x = x as f64 * (data_width - 1) as f64 / (width - 1) as f64;
-            let data_y = y as f64 * (data_height - 1) as f64 / (height - 1) as f64;
+            let data_y = (height - 1 - y) as f64 * (data_height - 1) as f64 / (height - 1) as f64;
 
             // Perform interpolation to get the value at this pixel
             let indices = vec![data_y, data_x];
@@ -495,15 +504,21 @@ mod tests {
     
     #[test]
     fn test_image_orientation() {
-        // Create a simple test data array with a distinct pattern
-        // This data represents a 3x3 grid with values increasing from top-left to bottom-right
-        // When properly oriented in the image:
-        // - North should be at the top of the image (higher latitude)
-        // - East should be at the right of the image (higher longitude)
+        // In NetCDF files, latitude typically increases from south to north
+        // This means the first row in the data array is the southernmost latitude (index 0)
+        // And the last row is the northernmost latitude (index data_height-1)
+        //
+        // When rendered to an image, we want:
+        // - North (highest latitude) at the top of the image
+        // - South (lowest latitude) at the bottom of the image
+        // - West (lowest longitude) at the left of the image
+        // - East (highest longitude) at the right of the image
+        
+        // Create a test data array where values increase from south to north and west to east
         let data = ndarray::array![
-            [1.0, 2.0, 3.0],  // Top row (north)
-            [4.0, 5.0, 6.0],  // Middle row
-            [7.0, 8.0, 9.0]   // Bottom row (south)
+            [1.0, 2.0, 3.0],  // Row 0 (south, lowest latitude)
+            [4.0, 5.0, 6.0],  // Row 1 (middle latitude)
+            [7.0, 8.0, 9.0]   // Row 2 (north, highest latitude)
         ];
         
         // Generate a 3x3 image with this data
@@ -523,15 +538,16 @@ mod tests {
         };
         
         // Check that the image has the correct orientation:
-        // - Top row (north) should be mapped to top row of image
-        // - Bottom row (south) should be mapped to bottom row of image
-        // - Left values (west) should be mapped to left of image
-        // - Right values (east) should be mapped to right of image
+        // With our mapping:
+        // - Top of image (y=0) should map to north (highest latitude, row 2 of data)
+        // - Bottom of image (y=height-1) should map to south (lowest latitude, row 0 of data)
+        // - Left of image (x=0) should map to west (lowest longitude, column 0 of data)
+        // - Right of image (x=width-1) should map to east (highest longitude, column 2 of data)
         
-        // The intensity of pixels should increase from top-left to bottom-right
-        assert!(intensity(&top_left) < intensity(&top_right));
-        assert!(intensity(&top_left) < intensity(&bottom_left));
-        assert!(intensity(&bottom_left) < intensity(&bottom_right));
-        assert!(intensity(&top_right) < intensity(&bottom_right));
+        // For correctly oriented geographic data:
+        assert!(intensity(&top_left) < intensity(&top_right));    // West to East increases
+        assert!(intensity(&top_left) > intensity(&bottom_left));  // North to South decreases
+        assert!(intensity(&bottom_left) < intensity(&bottom_right)); // West to East increases
+        assert!(intensity(&top_right) > intensity(&bottom_right)); // North to South decreases
     }
 }
