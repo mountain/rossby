@@ -3,7 +3,6 @@
 //! This module provides functions to generate various NetCDF test files
 //! with known data patterns for testing the rossby server.
 
-use netcdf::types::BasicType;
 use std::f32::consts::PI;
 use std::path::Path;
 
@@ -313,6 +312,7 @@ pub fn create_test_weather_nc(path: &Path) -> Result<()> {
     let mut v_wind_data = Vec::with_capacity(total_size);
     let mut pressure_data = Vec::with_capacity(total_size);
     let mut precip_data = Vec::with_capacity(total_size);
+    let mut humidity_data = Vec::with_capacity(total_size);
 
     // Generate synthetic weather data
     for t in 0..time_steps {
@@ -345,12 +345,18 @@ pub fn create_test_weather_nc(path: &Path) -> Result<()> {
                 let precip_var = 3.0 * (pressure_var < 0.0) as i32 as f32 * (-pressure_var / 15.0);
                 let precip = (precip_base + precip_var).max(0.0); // No negative precipitation
 
+                // Calculate humidity based on temperature (simplistic model)
+                // Relative humidity in percent, higher in warm areas with precipitation
+                let humidity = 50.0 + 40.0 * (precip / 5.0) + 10.0 * ((temp - 273.15) / 30.0);
+                let humidity = humidity.max(0.0).min(100.0);
+
                 // Add data to arrays
                 temp_data.push(temp);
                 u_wind_data.push(u_wind);
                 v_wind_data.push(v_wind);
                 pressure_data.push(pressure);
                 precip_data.push(precip);
+                humidity_data.push(humidity);
             }
         }
     }
@@ -425,6 +431,15 @@ pub fn create_test_weather_nc(path: &Path) -> Result<()> {
         precip_var.put_attribute("long_name", "Precipitation Rate")?;
         precip_var.put_attribute("standard_name", "precipitation_rate")?;
         precip_var.put_values(&precip_data, &[.., .., ..])?;
+    }
+
+    // Add and configure the humidity variable
+    {
+        let mut humidity_var = file.add_variable::<f32>("humidity", &["time", "lat", "lon"])?;
+        humidity_var.put_attribute("units", "%")?;
+        humidity_var.put_attribute("long_name", "Relative Humidity")?;
+        humidity_var.put_attribute("standard_name", "relative_humidity")?;
+        humidity_var.put_values(&humidity_data, &[.., .., ..])?;
     }
 
     Ok(())
