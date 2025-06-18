@@ -93,59 +93,46 @@ async fn start_test_server() -> SocketAddr {
     bound_addr
 }
 
-/// Initialize the test environment once
+/// Initialize a new test server for each test
 async fn init_test_environment() -> SocketAddr {
-    // Use the cached address if available
-    let addr = match TEST_ADDR.get() {
-        Some(addr) => *addr,
-        None => {
-            // Start the server only once
-            let new_addr = start_test_server().await;
-            match TEST_ADDR.set(new_addr) {
-                Ok(_) => {
-                    // We set it, so initialize
-                    INIT.call_once(|| {
-                        println!("Test environment initialized with server at {}", new_addr);
-                    });
-                    new_addr
-                },
-                Err(_) => {
-                    // Another thread set it first
-                    *TEST_ADDR.get().unwrap()
-                }
-            }
-        }
-    };
-    
+    // Always start a new server for each test
+    let server_addr = start_test_server().await;
+
+    println!(
+        "Test server started, waiting for it to be ready at {}",
+        server_addr
+    );
+
     // Wait for the server to be ready
     let mut retries = 10;
     while retries > 0 {
-        // Make sure we're using the correct address that the server is listening on
-        println!("Checking if server is ready at {}", addr);
         match reqwest::Client::new()
-            .get(format!("http://{}/metadata", addr))
+            .get(format!("http://{}/metadata", server_addr))
             .timeout(std::time::Duration::from_millis(500))
             .send()
             .await
         {
             Ok(_) => {
-                println!("Server is ready at {}", addr);
+                println!("Server is ready at {}", server_addr);
                 break; // Server is ready
-            },
+            }
             Err(e) => {
                 // Wait and retry
-                println!("Server not ready, retrying... ({} retries left): {}", retries, e);
+                println!(
+                    "Server not ready, retrying... ({} retries left): {}",
+                    retries, e
+                );
                 tokio::time::sleep(std::time::Duration::from_millis(200)).await;
                 retries -= 1;
             }
         }
     }
-    
+
     if retries == 0 {
-        panic!("Server did not become ready in time at {}", addr);
+        panic!("Server did not become ready in time at {}", server_addr);
     }
-    
-    addr
+
+    server_addr
 }
 
 #[tokio::test]

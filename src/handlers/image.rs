@@ -501,7 +501,7 @@ mod tests {
         assert_eq!(max_lon, -160.0); // 200 normalized to eurocentric
         assert_eq!(max_lat, 40.0);
     }
-    
+
     #[test]
     fn test_image_orientation() {
         // In NetCDF files, latitude typically increases from south to north
@@ -513,40 +513,40 @@ mod tests {
         // - South (lowest latitude) at the bottom of the image
         // - West (lowest longitude) at the left of the image
         // - East (highest longitude) at the right of the image
-        
+
         // Create a test data array where values increase from south to north and west to east
         let data = ndarray::array![
-            [1.0, 2.0, 3.0],  // Row 0 (south, lowest latitude)
-            [4.0, 5.0, 6.0],  // Row 1 (middle latitude)
-            [7.0, 8.0, 9.0]   // Row 2 (north, highest latitude)
+            [1.0, 2.0, 3.0], // Row 0 (south, lowest latitude)
+            [4.0, 5.0, 6.0], // Row 1 (middle latitude)
+            [7.0, 8.0, 9.0]  // Row 2 (north, highest latitude)
         ];
-        
+
         // Generate a 3x3 image with this data
         let colormap = colormaps::get_colormap("viridis").unwrap();
         let img = generate_image(data.view(), 3, 3, colormap.as_ref(), "nearest").unwrap();
-        
+
         // Get the pixel values to check orientation
         let top_left = img.get_pixel(0, 0);
         let top_right = img.get_pixel(2, 0);
         let bottom_left = img.get_pixel(0, 2);
         let bottom_right = img.get_pixel(2, 2);
-        
+
         // Convert the RGBA values to intensity (just for comparison purposes)
         let intensity = |pixel: &image::Rgba<u8>| -> u32 {
             let rgba = pixel.0;
             rgba[0] as u32 + rgba[1] as u32 + rgba[2] as u32
         };
-        
+
         // Check that the image has the correct orientation:
         // With our mapping:
         // - Top of image (y=0) should map to north (highest latitude, row 2 of data)
         // - Bottom of image (y=height-1) should map to south (lowest latitude, row 0 of data)
         // - Left of image (x=0) should map to west (lowest longitude, column 0 of data)
         // - Right of image (x=width-1) should map to east (highest longitude, column 2 of data)
-        
+
         // For correctly oriented geographic data:
-        assert!(intensity(&top_left) < intensity(&top_right));    // West to East increases
-        assert!(intensity(&top_left) > intensity(&bottom_left));  // North to South decreases
+        assert!(intensity(&top_left) < intensity(&top_right)); // West to East increases
+        assert!(intensity(&top_left) > intensity(&bottom_left)); // North to South decreases
         assert!(intensity(&bottom_left) < intensity(&bottom_right)); // West to East increases
         assert!(intensity(&top_right) > intensity(&bottom_right)); // North to South decreases
     }
