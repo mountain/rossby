@@ -407,8 +407,6 @@ fn compute_indices(indices: &mut [usize], flat_index: usize, shape: &[usize]) {
 /// Create a super simplified test NetCDF file - focusing only on making valid data
 #[cfg(test)]
 fn create_test_netcdf_file(path: &Path) -> Result<()> {
-    use std::fs;
-
     // Create a very basic netCDF file with the minimal structure required for tests
     let mut file = netcdf::create(path)?;
 
@@ -579,7 +577,6 @@ fn validate_netcdf_data(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::fs;
     use tempfile::tempdir;
 
     // Test loading a real climate data file
