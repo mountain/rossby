@@ -164,14 +164,15 @@ fn extract_metadata(file: &netcdf::File) -> Result<Metadata> {
 fn is_supported_variable(var: &NetCDFVariable) -> bool {
     use netcdf::types::{BasicType, VariableType};
 
-    matches!(var.vartype(), 
+    matches!(
+        var.vartype(),
         VariableType::Basic(BasicType::Byte)
-        | VariableType::Basic(BasicType::Char)
-        | VariableType::Basic(BasicType::Short)
-        | VariableType::Basic(BasicType::Int)
-        | VariableType::Basic(BasicType::Int64)
-        | VariableType::Basic(BasicType::Float)
-        | VariableType::Basic(BasicType::Double)
+            | VariableType::Basic(BasicType::Char)
+            | VariableType::Basic(BasicType::Short)
+            | VariableType::Basic(BasicType::Int)
+            | VariableType::Basic(BasicType::Int64)
+            | VariableType::Basic(BasicType::Float)
+            | VariableType::Basic(BasicType::Double)
     )
 }
 
@@ -181,11 +182,11 @@ fn convert_attribute(attr: &Attribute) -> Result<AttributeValue> {
 
     // The new API returns an AttributeValue enum directly
     let value = attr.value()?;
-    
+
     match value {
         // String types
         NcAttributeValue::Str(s) => Ok(AttributeValue::Text(s)),
-        
+
         // Numeric types - store as f64 for simplicity
         NcAttributeValue::Uchar(v) => Ok(AttributeValue::Number(v as f64)),
         NcAttributeValue::Schar(v) => Ok(AttributeValue::Number(v as f64)),
@@ -193,13 +194,13 @@ fn convert_attribute(attr: &Attribute) -> Result<AttributeValue> {
         NcAttributeValue::Int(v) => Ok(AttributeValue::Number(v as f64)),
         NcAttributeValue::Float(v) => Ok(AttributeValue::Number(v as f64)),
         NcAttributeValue::Double(v) => Ok(AttributeValue::Number(v)),
-        
+
         // For array types, the netcdf crate now returns a Vec<T>, but we need to check the API
         // to see what the exact variants are
         _ => {
             // Convert any other types to a text representation for now
             Ok(AttributeValue::Text(format!("{:?}", value)))
-        },
+        }
     }
 }
 
@@ -210,48 +211,48 @@ fn extract_coordinate_values(var: &NetCDFVariable) -> Result<Vec<f64>> {
     // Get the dimension size
     let dim_size = var.dimensions()[0].len();
     let mut values = Vec::with_capacity(dim_size);
-    
+
     // Read each value individually based on the variable type
     match var.vartype() {
         VariableType::Basic(BasicType::Byte) => {
             for i in 0..dim_size {
                 let index = [i]; // Use a fixed-size array instead of Vec
-                let value: i8 = var.get_value(&index)?;
+                let value: i8 = var.get_value(index)?;
                 values.push(value as f64);
             }
         }
         VariableType::Basic(BasicType::Short) => {
             for i in 0..dim_size {
                 let index = [i];
-                let value: i16 = var.get_value(&index)?;
+                let value: i16 = var.get_value(index)?;
                 values.push(value as f64);
             }
         }
         VariableType::Basic(BasicType::Int) => {
             for i in 0..dim_size {
                 let index = [i];
-                let value: i32 = var.get_value(&index)?;
+                let value: i32 = var.get_value(index)?;
                 values.push(value as f64);
             }
         }
         VariableType::Basic(BasicType::Int64) => {
             for i in 0..dim_size {
                 let index = [i];
-                let value: i64 = var.get_value(&index)?;
+                let value: i64 = var.get_value(index)?;
                 values.push(value as f64);
             }
         }
         VariableType::Basic(BasicType::Float) => {
             for i in 0..dim_size {
                 let index = [i];
-                let value: f32 = var.get_value(&index)?;
+                let value: f32 = var.get_value(index)?;
                 values.push(value as f64);
             }
         }
         VariableType::Basic(BasicType::Double) => {
             for i in 0..dim_size {
                 let index = [i];
-                let value: f64 = var.get_value(&index)?;
+                let value: f64 = var.get_value(index)?;
                 values.push(value);
             }
         }
@@ -266,7 +267,7 @@ fn extract_coordinate_values(var: &NetCDFVariable) -> Result<Vec<f64>> {
             );
         }
     }
-    
+
     Ok(values)
 }
 
@@ -302,103 +303,93 @@ fn convert_variable_to_array(var: &NetCDFVariable, shape: &[usize]) -> Result<Ar
 
     // Create the shape for the ndarray
     let dim = Dim(shape.to_vec());
-    
+
     // Total number of elements
     let total_elements = shape.iter().product();
     let mut data = Vec::with_capacity(total_elements);
-    
+
     // Multi-dimensional array indices
     let mut indices = vec![0; shape.len()];
-    
+
     // Read each value individually based on the variable type
     match var.vartype() {
         VariableType::Basic(BasicType::Byte) => {
             // Use a fixed-size array to hold the indices
             let mut index_array = [0; 10]; // Most NetCDF files won't have more than 10 dimensions
-            
+
             for i in 0..total_elements {
                 // Convert flat index to multi-dimensional indices
                 compute_indices(&mut indices, i, shape);
-                
+
                 // Copy from vec to array (only up to shape.len() elements)
-                for j in 0..shape.len() {
-                    index_array[j] = indices[j];
-                }
-                
+                index_array[..shape.len()].copy_from_slice(&indices[..shape.len()]);
+
                 let value: i8 = var.get_value(&index_array[..shape.len()])?;
                 data.push(value as f32);
             }
         }
         VariableType::Basic(BasicType::Short) => {
             let mut index_array = [0; 10];
-            
+
             for i in 0..total_elements {
                 compute_indices(&mut indices, i, shape);
-                for j in 0..shape.len() {
-                    index_array[j] = indices[j];
-                }
-                
+                index_array[..shape.len()].copy_from_slice(&indices[..shape.len()]);
+
                 let value: i16 = var.get_value(&index_array[..shape.len()])?;
                 data.push(value as f32);
             }
         }
         VariableType::Basic(BasicType::Int) => {
             let mut index_array = [0; 10];
-            
+
             for i in 0..total_elements {
                 compute_indices(&mut indices, i, shape);
-                for j in 0..shape.len() {
-                    index_array[j] = indices[j];
-                }
-                
+                index_array[..shape.len()].copy_from_slice(&indices[..shape.len()]);
+
                 let value: i32 = var.get_value(&index_array[..shape.len()])?;
                 data.push(value as f32);
             }
         }
         VariableType::Basic(BasicType::Int64) => {
             let mut index_array = [0; 10];
-            
+
             for i in 0..total_elements {
                 compute_indices(&mut indices, i, shape);
-                for j in 0..shape.len() {
-                    index_array[j] = indices[j];
-                }
-                
+                index_array[..shape.len()].copy_from_slice(&indices[..shape.len()]);
+
                 let value: i64 = var.get_value(&index_array[..shape.len()])?;
                 data.push(value as f32);
             }
         }
         VariableType::Basic(BasicType::Float) => {
             let mut index_array = [0; 10];
-            
+
             for i in 0..total_elements {
                 compute_indices(&mut indices, i, shape);
-                for j in 0..shape.len() {
-                    index_array[j] = indices[j];
-                }
-                
+                index_array[..shape.len()].copy_from_slice(&indices[..shape.len()]);
+
                 let value: f32 = var.get_value(&index_array[..shape.len()])?;
                 data.push(value);
             }
         }
         VariableType::Basic(BasicType::Double) => {
             let mut index_array = [0; 10];
-            
+
             for i in 0..total_elements {
                 compute_indices(&mut indices, i, shape);
-                for j in 0..shape.len() {
-                    index_array[j] = indices[j];
-                }
-                
+                index_array[..shape.len()].copy_from_slice(&indices[..shape.len()]);
+
                 let value: f64 = var.get_value(&index_array[..shape.len()])?;
                 data.push(value as f32);
             }
         }
-        _ => return Err(RossbyError::NetCdf {
-            message: format!("Unsupported variable type: {:?}", var.vartype()),
-        }),
+        _ => {
+            return Err(RossbyError::NetCdf {
+                message: format!("Unsupported variable type: {:?}", var.vartype()),
+            })
+        }
     }
-    
+
     // Create the ndarray from the collected data
     let array = Array::from_shape_vec(dim, data)?;
     Ok(array)
@@ -417,23 +408,23 @@ fn compute_indices(indices: &mut [usize], flat_index: usize, shape: &[usize]) {
 #[cfg(test)]
 fn create_test_netcdf_file(path: &Path) -> Result<()> {
     use std::fs;
-    
+
     // Create a very basic netCDF file with the minimal structure required for tests
     let mut file = netcdf::create(path)?;
-    
+
     // Add global attributes
     file.add_attribute("title", "Rossby Test File")?;
     file.add_attribute("source", "test")?;
-    
+
     // First, add all dimensions
     let lon_size = 2;
     let lat_size = 2;
     let time_size = 2;
-    
+
     file.add_dimension("lon", lon_size)?;
     file.add_dimension("lat", lat_size)?;
     file.add_dimension("time", time_size)?;
-    
+
     // Then create coordinate variables one at a time
     {
         // Define and write lon coordinate - one value at a time
@@ -442,7 +433,7 @@ fn create_test_netcdf_file(path: &Path) -> Result<()> {
         lon_var.put_value(0.0, &[0])?;
         lon_var.put_value(1.0, &[1])?;
     }
-    
+
     {
         // Define and write lat coordinate - one value at a time
         let mut lat_var = file.add_variable::<f64>("lat", &["lat"])?;
@@ -450,7 +441,7 @@ fn create_test_netcdf_file(path: &Path) -> Result<()> {
         lat_var.put_value(0.0, &[0])?;
         lat_var.put_value(1.0, &[1])?;
     }
-    
+
     {
         // Define and write time coordinate - one value at a time
         let mut time_var = file.add_variable::<f64>("time", &["time"])?;
@@ -458,13 +449,13 @@ fn create_test_netcdf_file(path: &Path) -> Result<()> {
         time_var.put_value(0.0, &[0])?;
         time_var.put_value(1.0, &[1])?;
     }
-    
+
     {
         // Define and write temperature data - one value at a time
         let mut temp_var = file.add_variable::<f32>("temperature", &["time", "lat", "lon"])?;
         temp_var.put_attribute("units", "K")?;
         temp_var.put_attribute("long_name", "Temperature")?;
-        
+
         // Write 2x2x2 array one value at a time
         for t in 0..time_size {
             for y in 0..lat_size {
@@ -476,28 +467,32 @@ fn create_test_netcdf_file(path: &Path) -> Result<()> {
             }
         }
     }
-    
+
     // Sync to ensure all data is written
     file.sync()?;
-    
+
     // Verify the file was created correctly
     let file_verify = netcdf::open(path)?;
     println!("TEST FILE CREATED with dimensions:");
     for dim in file_verify.dimensions() {
         println!("  Dimension '{}' has size {}", dim.name(), dim.len());
     }
-    
+
     // Print variable information to help debug
     println!("TEST FILE VARIABLES:");
     for var in file_verify.variables() {
-        println!("  Variable '{}' dimensions: {:?}", var.name(), var.dimensions());
+        println!(
+            "  Variable '{}' dimensions: {:?}",
+            var.name(),
+            var.dimensions()
+        );
         if let Ok(values) = var.get_values::<f32, _>(&[] as &[netcdf::Extent]) {
             println!("    Values (as f32): {:?}", values);
         } else if let Ok(values) = var.get_values::<f64, _>(&[] as &[netcdf::Extent]) {
             println!("    Values (as f64): {:?}", values);
         }
     }
-    
+
     Ok(())
 }
 
@@ -584,8 +579,8 @@ fn validate_netcdf_data(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use tempfile::tempdir;
     use std::fs;
+    use tempfile::tempdir;
 
     // Test loading a real climate data file
     #[test]
@@ -597,56 +592,60 @@ mod tests {
         }
 
         println!("Loading real climate data from: {}", file_path.display());
-        
+
         // Load the file
         let (metadata, data) = load_netcdf_file(file_path)?;
-        
+
         // Verify dimensions
         assert!(metadata.dimensions.contains_key("time"));
         assert!(metadata.dimensions.contains_key("lat"));
         assert!(metadata.dimensions.contains_key("lon"));
-        
+
         assert_eq!(metadata.dimensions["time"].size, 53);
         assert_eq!(metadata.dimensions["lat"].size, 32);
         assert_eq!(metadata.dimensions["lon"].size, 64);
-        
+
         // Verify variables
         assert!(metadata.variables.contains_key("t2m"));
         assert!(metadata.variables.contains_key("lat"));
         assert!(metadata.variables.contains_key("lon"));
         assert!(metadata.variables.contains_key("time"));
-        
+
         // Verify coordinates
         assert!(metadata.coordinates.contains_key("lat"));
         assert!(metadata.coordinates.contains_key("lon"));
         assert!(metadata.coordinates.contains_key("time"));
-        
+
         assert_eq!(metadata.coordinates["lat"].len(), 32);
         assert_eq!(metadata.coordinates["lon"].len(), 64);
         assert_eq!(metadata.coordinates["time"].len(), 53);
-        
+
         // Check some specific coordinate values
         assert_eq!(metadata.coordinates["lat"][0], -87.1875);
         assert_eq!(metadata.coordinates["lon"][0], 0.0);
-        
+
         // Verify the data arrays
         assert!(data.contains_key("t2m"));
         assert!(data.contains_key("lat"));
         assert!(data.contains_key("lon"));
         assert!(data.contains_key("time"));
-        
+
         // Check the temperature data array
         let t2m_data = &data["t2m"];
         assert_eq!(t2m_data.shape(), &[53, 32, 64]);
-        
+
         // Verify the first temperature value (approximately)
         let first_value = t2m_data[[0, 0, 0]];
         let expected_value = 251.48; // From the inspection result 251.47910694200166
-        assert!((first_value - expected_value).abs() < 0.01, 
-                "First value {} should be close to expected {}", first_value, expected_value);
-        
+        assert!(
+            (first_value - expected_value).abs() < 0.01,
+            "First value {} should be close to expected {}",
+            first_value,
+            expected_value
+        );
+
         println!("Real climate data loaded and verified successfully");
-        
+
         Ok(())
     }
 
@@ -656,66 +655,70 @@ mod tests {
         // Create a temporary directory for the test file
         let dir = tempdir()?;
         let file_path = dir.path().join("minimal_test.nc");
-        
+
         println!("Creating a minimal NetCDF file at: {}", file_path.display());
-        
+
         // Create the file
         let mut file = netcdf::create(&file_path)?;
-        
+
         // Add dimension
         println!("Adding dimension 'x' with size 2");
         let _x_dim = file.add_dimension("x", 2)?;
-        
+
         // Add variable
         println!("Adding variable 'data' with dimension 'x'");
         let mut var = file.add_variable::<f32>("data", &["x"])?;
-        
+
         // Try to add data in several different ways until one works
-        
+
         println!("METHOD 1: Using empty extents array");
         let data = vec![1.0f32, 2.0f32];
         match var.put_values(&data, &[] as &[netcdf::Extent]) {
             Ok(_) => println!("SUCCESS: Method 1 worked"),
             Err(e) => println!("FAILED: Method 1 error: {}", e),
         }
-        
+
         println!("METHOD 3: Writing one value at a time");
         match var.put_value(1.0f32, &[0]) {
             Ok(_) => println!("SUCCESS: Method 3a worked (first value)"),
             Err(e) => println!("FAILED: Method 3a error: {}", e),
         }
-        
+
         match var.put_value(2.0f32, &[1]) {
             Ok(_) => println!("SUCCESS: Method 3b worked (second value)"),
             Err(e) => println!("FAILED: Method 3b error: {}", e),
         }
-        
+
         // Save file
         println!("Syncing file");
         file.sync()?;
-        
+
         // Read the file back
         println!("\nReading file back");
         let file = netcdf::open(&file_path)?;
-        
+
         // Check dimensions
         println!("Checking dimensions:");
         for dim in file.dimensions() {
             println!("  Dimension '{}' size: {}", dim.name(), dim.len());
         }
-        
+
         // Check variables
         println!("Checking variables:");
         for var in file.variables() {
-            println!("  Variable '{}' dimensions: {:?}", var.name(), var.dimensions());
-            
+            println!(
+                "  Variable '{}' dimensions: {:?}",
+                var.name(),
+                var.dimensions()
+            );
+
             // Try to read values
             match var.get_values::<f32, _>(&[] as &[netcdf::Extent]) {
                 Ok(values) => println!("  Values: {:?}", values),
                 Err(e) => println!("  Error reading values: {}", e),
             }
         }
-        
+
         Ok(())
     }
 
@@ -797,7 +800,11 @@ mod tests {
 
         println!("Variables: {:?}", metadata.variables.keys());
         for (name, var) in &metadata.variables {
-            println!("  Variable '{}' attributes: {:?}", name, var.attributes.keys());
+            println!(
+                "  Variable '{}' attributes: {:?}",
+                name,
+                var.attributes.keys()
+            );
         }
 
         // Check global attributes
@@ -805,7 +812,7 @@ mod tests {
             AttributeValue::Text(text) => {
                 println!("Title attribute value: {}", text);
                 assert_eq!(text, "Rossby Test File");
-            },
+            }
             _ => panic!("Expected Text attribute"),
         }
 
@@ -814,7 +821,7 @@ mod tests {
             AttributeValue::Text(text) => {
                 println!("Temperature units attribute value: {}", text);
                 assert_eq!(text, "K");
-            },
+            }
             _ => panic!("Expected Text attribute"),
         }
 
@@ -822,7 +829,7 @@ mod tests {
             AttributeValue::Text(text) => {
                 println!("Temperature long_name attribute value: {}", text);
                 assert_eq!(text, "Temperature");
-            },
+            }
             _ => panic!("Expected Text attribute"),
         }
 
@@ -859,7 +866,7 @@ mod tests {
         } else {
             println!("Validation passed");
         }
-        
+
         assert!(validation_result.is_ok());
 
         Ok(())

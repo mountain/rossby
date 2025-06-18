@@ -8,7 +8,9 @@ use std::f32::consts::PI;
 use std::path::Path;
 
 // We use Result<()> from our crate to handle netcdf-specific errors
-use crate::error::Result;
+// Use the netcdf crate's error type directly
+use netcdf::Error;
+type Result<T> = std::result::Result<T, Error>;
 
 /// Creates a NetCDF file with a simple linear gradient pattern.
 ///
@@ -25,28 +27,13 @@ pub fn create_linear_gradient_nc(path: &Path, size: (usize, usize)) -> Result<()
     let mut file = netcdf::create(path)?;
 
     // Add dimensions
-    let lon_dim = file.add_dimension("lon", size.0)?;
-    let lat_dim = file.add_dimension("lat", size.1)?;
-    let time_dim = file.add_unlimited_dimension("time")?;
+    let _lon_dim = file.add_dimension("lon", size.0)?;
+    let _lat_dim = file.add_dimension("lat", size.1)?;
+    let _time_dim = file.add_unlimited_dimension("time")?;
 
-    // Add coordinate variables
-    let mut lon_var = file.add_variable::<f32>("lon", &[&lon_dim])?;
-    let mut lat_var = file.add_variable::<f32>("lat", &[&lat_dim])?;
-    let mut time_var = file.add_variable::<f32>("time", &[&time_dim])?;
-
-    // Add a data variable
-    let mut data_var = file.add_variable::<f32>("gradient", &[&time_dim, &lat_dim, &lon_dim])?;
-
-    // Add some attributes
+    // Add file attributes
     file.add_attribute("title", "Linear Gradient Test Data")?;
     file.add_attribute("institution", "rossby test suite")?;
-
-    lon_var.add_attribute("units", "degrees_east")?;
-    lat_var.add_attribute("units", "degrees_north")?;
-    time_var.add_attribute("units", "days since 2000-01-01")?;
-
-    data_var.add_attribute("units", "arbitrary")?;
-    data_var.add_attribute("long_name", "Linear Gradient")?;
 
     // Create coordinate values
     let lon_values: Vec<f32> = (0..size.0)
@@ -56,11 +43,6 @@ pub fn create_linear_gradient_nc(path: &Path, size: (usize, usize)) -> Result<()
         .map(|i| -90.0 + (i as f32) * 180.0 / (size.1 as f32))
         .collect();
     let time_values: Vec<f32> = vec![0.0, 1.0, 2.0]; // 3 time steps
-
-    // Write coordinate values
-    lon_var.put_values(&lon_values, None, None)?;
-    lat_var.put_values(&lat_values, None, None)?;
-    time_var.put_values(&time_values, None, None)?;
 
     // Create gradient data
     let total_size = 3 * size.1 * size.0; // 3 time steps
@@ -79,8 +61,34 @@ pub fn create_linear_gradient_nc(path: &Path, size: (usize, usize)) -> Result<()
         }
     }
 
-    // Write the data
-    data_var.put_values(&data_values, None, None)?;
+    // Add and configure the lon variable
+    {
+        let mut lon_var = file.add_variable::<f32>("lon", &["lon"])?;
+        lon_var.put_attribute("units", "degrees_east")?;
+        lon_var.put_values(&lon_values, &[..])?;
+    }
+
+    // Add and configure the lat variable
+    {
+        let mut lat_var = file.add_variable::<f32>("lat", &["lat"])?;
+        lat_var.put_attribute("units", "degrees_north")?;
+        lat_var.put_values(&lat_values, &[..])?;
+    }
+
+    // Add and configure the time variable
+    {
+        let mut time_var = file.add_variable::<f32>("time", &["time"])?;
+        time_var.put_attribute("units", "days since 2000-01-01")?;
+        time_var.put_values(&time_values, &[..])?;
+    }
+
+    // Add and configure the data variable
+    {
+        let mut data_var = file.add_variable::<f32>("gradient", &["time", "lat", "lon"])?;
+        data_var.put_attribute("units", "arbitrary")?;
+        data_var.put_attribute("long_name", "Linear Gradient")?;
+        data_var.put_values(&data_values, &[.., .., ..])?;
+    }
 
     Ok(())
 }
@@ -100,28 +108,13 @@ pub fn create_sinusoidal_nc(path: &Path, size: (usize, usize)) -> Result<()> {
     let mut file = netcdf::create(path)?;
 
     // Add dimensions
-    let lon_dim = file.add_dimension("lon", size.0)?;
-    let lat_dim = file.add_dimension("lat", size.1)?;
-    let time_dim = file.add_unlimited_dimension("time")?;
+    let _lon_dim = file.add_dimension("lon", size.0)?;
+    let _lat_dim = file.add_dimension("lat", size.1)?;
+    let _time_dim = file.add_unlimited_dimension("time")?;
 
-    // Add coordinate variables
-    let mut lon_var = file.add_variable::<f32>("lon", &[&lon_dim])?;
-    let mut lat_var = file.add_variable::<f32>("lat", &[&lat_dim])?;
-    let mut time_var = file.add_variable::<f32>("time", &[&time_dim])?;
-
-    // Add a data variable
-    let mut data_var = file.add_variable::<f32>("wave", &[&time_dim, &lat_dim, &lon_dim])?;
-
-    // Add some attributes
+    // Add file attributes
     file.add_attribute("title", "Sinusoidal Pattern Test Data")?;
     file.add_attribute("institution", "rossby test suite")?;
-
-    lon_var.add_attribute("units", "degrees_east")?;
-    lat_var.add_attribute("units", "degrees_north")?;
-    time_var.add_attribute("units", "days since 2000-01-01")?;
-
-    data_var.add_attribute("units", "arbitrary")?;
-    data_var.add_attribute("long_name", "Sinusoidal Wave Pattern")?;
 
     // Create coordinate values
     let lon_values: Vec<f32> = (0..size.0)
@@ -131,11 +124,6 @@ pub fn create_sinusoidal_nc(path: &Path, size: (usize, usize)) -> Result<()> {
         .map(|i| -90.0 + (i as f32) * 180.0 / (size.1 as f32))
         .collect();
     let time_values: Vec<f32> = vec![0.0, 1.0, 2.0]; // 3 time steps
-
-    // Write coordinate values
-    lon_var.put_values(&lon_values, None, None)?;
-    lat_var.put_values(&lat_values, None, None)?;
-    time_var.put_values(&time_values, None, None)?;
 
     // Create sinusoidal pattern data
     let total_size = 3 * size.1 * size.0; // 3 time steps
@@ -160,8 +148,34 @@ pub fn create_sinusoidal_nc(path: &Path, size: (usize, usize)) -> Result<()> {
         }
     }
 
-    // Write the data
-    data_var.put_values(&data_values, None, None)?;
+    // Add and configure the lon variable
+    {
+        let mut lon_var = file.add_variable::<f32>("lon", &["lon"])?;
+        lon_var.put_attribute("units", "degrees_east")?;
+        lon_var.put_values(&lon_values, &[..])?;
+    }
+
+    // Add and configure the lat variable
+    {
+        let mut lat_var = file.add_variable::<f32>("lat", &["lat"])?;
+        lat_var.put_attribute("units", "degrees_north")?;
+        lat_var.put_values(&lat_values, &[..])?;
+    }
+
+    // Add and configure the time variable
+    {
+        let mut time_var = file.add_variable::<f32>("time", &["time"])?;
+        time_var.put_attribute("units", "days since 2000-01-01")?;
+        time_var.put_values(&time_values, &[..])?;
+    }
+
+    // Add and configure the data variable
+    {
+        let mut data_var = file.add_variable::<f32>("wave", &["time", "lat", "lon"])?;
+        data_var.put_attribute("units", "arbitrary")?;
+        data_var.put_attribute("long_name", "Sinusoidal Wave Pattern")?;
+        data_var.put_values(&data_values, &[.., .., ..])?;
+    }
 
     Ok(())
 }
@@ -181,28 +195,13 @@ pub fn create_gaussian_blob_nc(path: &Path, size: (usize, usize)) -> Result<()> 
     let mut file = netcdf::create(path)?;
 
     // Add dimensions
-    let lon_dim = file.add_dimension("lon", size.0)?;
-    let lat_dim = file.add_dimension("lat", size.1)?;
-    let time_dim = file.add_unlimited_dimension("time")?;
+    let _lon_dim = file.add_dimension("lon", size.0)?;
+    let _lat_dim = file.add_dimension("lat", size.1)?;
+    let _time_dim = file.add_unlimited_dimension("time")?;
 
-    // Add coordinate variables
-    let mut lon_var = file.add_variable::<f32>("lon", &[&lon_dim])?;
-    let mut lat_var = file.add_variable::<f32>("lat", &[&lat_dim])?;
-    let mut time_var = file.add_variable::<f32>("time", &[&time_dim])?;
-
-    // Add a data variable
-    let mut data_var = file.add_variable::<f32>("blob", &[&time_dim, &lat_dim, &lon_dim])?;
-
-    // Add some attributes
+    // Add file attributes
     file.add_attribute("title", "Gaussian Blob Test Data")?;
     file.add_attribute("institution", "rossby test suite")?;
-
-    lon_var.add_attribute("units", "degrees_east")?;
-    lat_var.add_attribute("units", "degrees_north")?;
-    time_var.add_attribute("units", "days since 2000-01-01")?;
-
-    data_var.add_attribute("units", "arbitrary")?;
-    data_var.add_attribute("long_name", "Gaussian Blob Pattern")?;
 
     // Create coordinate values
     let lon_values: Vec<f32> = (0..size.0)
@@ -212,11 +211,6 @@ pub fn create_gaussian_blob_nc(path: &Path, size: (usize, usize)) -> Result<()> 
         .map(|i| -90.0 + (i as f32) * 180.0 / (size.1 as f32))
         .collect();
     let time_values: Vec<f32> = vec![0.0, 1.0, 2.0]; // 3 time steps
-
-    // Write coordinate values
-    lon_var.put_values(&lon_values, None, None)?;
-    lat_var.put_values(&lat_values, None, None)?;
-    time_var.put_values(&time_values, None, None)?;
 
     // Create gaussian blob data
     let total_size = 3 * size.1 * size.0; // 3 time steps
@@ -243,8 +237,34 @@ pub fn create_gaussian_blob_nc(path: &Path, size: (usize, usize)) -> Result<()> 
         }
     }
 
-    // Write the data
-    data_var.put_values(&data_values, None, None)?;
+    // Add and configure the lon variable
+    {
+        let mut lon_var = file.add_variable::<f32>("lon", &["lon"])?;
+        lon_var.put_attribute("units", "degrees_east")?;
+        lon_var.put_values(&lon_values, &[..])?;
+    }
+
+    // Add and configure the lat variable
+    {
+        let mut lat_var = file.add_variable::<f32>("lat", &["lat"])?;
+        lat_var.put_attribute("units", "degrees_north")?;
+        lat_var.put_values(&lat_values, &[..])?;
+    }
+
+    // Add and configure the time variable
+    {
+        let mut time_var = file.add_variable::<f32>("time", &["time"])?;
+        time_var.put_attribute("units", "days since 2000-01-01")?;
+        time_var.put_values(&time_values, &[..])?;
+    }
+
+    // Add and configure the data variable
+    {
+        let mut data_var = file.add_variable::<f32>("blob", &["time", "lat", "lon"])?;
+        data_var.put_attribute("units", "arbitrary")?;
+        data_var.put_attribute("long_name", "Gaussian Blob Pattern")?;
+        data_var.put_values(&data_values, &[.., .., ..])?;
+    }
 
     Ok(())
 }
@@ -271,23 +291,9 @@ pub fn create_test_weather_nc(path: &Path) -> Result<()> {
     let mut file = netcdf::create(path)?;
 
     // Add dimensions
-    let lon_dim = file.add_dimension("lon", lon_size)?;
-    let lat_dim = file.add_dimension("lat", lat_size)?;
-    let time_dim = file.add_unlimited_dimension("time")?;
-
-    // Add coordinate variables
-    let mut lon_var = file.add_variable::<f32>("lon", &[&lon_dim])?;
-    let mut lat_var = file.add_variable::<f32>("lat", &[&lat_dim])?;
-    let mut time_var = file.add_variable::<f32>("time", &[&time_dim])?;
-
-    // Add data variables
-    let mut temp_var = file.add_variable::<f32>("temperature", &[&time_dim, &lat_dim, &lon_dim])?;
-    let mut u_wind_var = file.add_variable::<f32>("u_wind", &[&time_dim, &lat_dim, &lon_dim])?;
-    let mut v_wind_var = file.add_variable::<f32>("v_wind", &[&time_dim, &lat_dim, &lon_dim])?;
-    let mut pressure_var =
-        file.add_variable::<f32>("pressure", &[&time_dim, &lat_dim, &lon_dim])?;
-    let mut precip_var =
-        file.add_variable::<f32>("precipitation", &[&time_dim, &lat_dim, &lon_dim])?;
+    let _lon_dim = file.add_dimension("lon", lon_size)?;
+    let _lat_dim = file.add_dimension("lat", lat_size)?;
+    let _time_dim = file.add_unlimited_dimension("time")?;
 
     // Add file attributes
     file.add_attribute("title", "Rossby Test Weather Data")?;
@@ -295,49 +301,10 @@ pub fn create_test_weather_nc(path: &Path) -> Result<()> {
     file.add_attribute("source", "Synthetic weather data for testing")?;
     file.add_attribute("references", "None")?;
 
-    // Add coordinate attributes
-    lon_var.add_attribute("units", "degrees_east")?;
-    lon_var.add_attribute("long_name", "Longitude")?;
-    lon_var.add_attribute("standard_name", "longitude")?;
-
-    lat_var.add_attribute("units", "degrees_north")?;
-    lat_var.add_attribute("long_name", "Latitude")?;
-    lat_var.add_attribute("standard_name", "latitude")?;
-
-    time_var.add_attribute("units", "days since 2000-01-01")?;
-    time_var.add_attribute("long_name", "Time")?;
-    time_var.add_attribute("calendar", "standard")?;
-
-    // Add variable attributes
-    temp_var.add_attribute("units", "K")?;
-    temp_var.add_attribute("long_name", "Temperature")?;
-    temp_var.add_attribute("standard_name", "air_temperature")?;
-
-    u_wind_var.add_attribute("units", "m/s")?;
-    u_wind_var.add_attribute("long_name", "Eastward Wind")?;
-    u_wind_var.add_attribute("standard_name", "eastward_wind")?;
-
-    v_wind_var.add_attribute("units", "m/s")?;
-    v_wind_var.add_attribute("long_name", "Northward Wind")?;
-    v_wind_var.add_attribute("standard_name", "northward_wind")?;
-
-    pressure_var.add_attribute("units", "hPa")?;
-    pressure_var.add_attribute("long_name", "Sea Level Pressure")?;
-    pressure_var.add_attribute("standard_name", "air_pressure_at_sea_level")?;
-
-    precip_var.add_attribute("units", "mm/day")?;
-    precip_var.add_attribute("long_name", "Precipitation Rate")?;
-    precip_var.add_attribute("standard_name", "precipitation_rate")?;
-
     // Create coordinate values
     let lon_values: Vec<f32> = (0..lon_size).map(|i| -180.0 + (i as f32) * 10.0).collect();
     let lat_values: Vec<f32> = (0..lat_size).map(|i| -90.0 + (i as f32) * 10.0).collect();
     let time_values: Vec<f32> = (0..time_steps).map(|i| i as f32).collect();
-
-    // Write coordinate values
-    lon_var.put_values(&lon_values, None, None)?;
-    lat_var.put_values(&lat_values, None, None)?;
-    time_var.put_values(&time_values, None, None)?;
 
     // Create weather data arrays
     let total_size = time_steps * lat_size * lon_size;
@@ -388,12 +355,77 @@ pub fn create_test_weather_nc(path: &Path) -> Result<()> {
         }
     }
 
-    // Write the data variables
-    temp_var.put_values(&temp_data, None, None)?;
-    u_wind_var.put_values(&u_wind_data, None, None)?;
-    v_wind_var.put_values(&v_wind_data, None, None)?;
-    pressure_var.put_values(&pressure_data, None, None)?;
-    precip_var.put_values(&precip_data, None, None)?;
+    // Add and configure the lon variable
+    {
+        let mut lon_var = file.add_variable::<f32>("lon", &["lon"])?;
+        lon_var.put_attribute("units", "degrees_east")?;
+        lon_var.put_attribute("long_name", "Longitude")?;
+        lon_var.put_attribute("standard_name", "longitude")?;
+        lon_var.put_values(&lon_values, &[..])?;
+    }
+
+    // Add and configure the lat variable
+    {
+        let mut lat_var = file.add_variable::<f32>("lat", &["lat"])?;
+        lat_var.put_attribute("units", "degrees_north")?;
+        lat_var.put_attribute("long_name", "Latitude")?;
+        lat_var.put_attribute("standard_name", "latitude")?;
+        lat_var.put_values(&lat_values, &[..])?;
+    }
+
+    // Add and configure the time variable
+    {
+        let mut time_var = file.add_variable::<f32>("time", &["time"])?;
+        time_var.put_attribute("units", "days since 2000-01-01")?;
+        time_var.put_attribute("long_name", "Time")?;
+        time_var.put_attribute("calendar", "standard")?;
+        time_var.put_values(&time_values, &[..])?;
+    }
+
+    // Add and configure the temperature variable
+    {
+        let mut temp_var = file.add_variable::<f32>("temperature", &["time", "lat", "lon"])?;
+        temp_var.put_attribute("units", "K")?;
+        temp_var.put_attribute("long_name", "Temperature")?;
+        temp_var.put_attribute("standard_name", "air_temperature")?;
+        temp_var.put_values(&temp_data, &[.., .., ..])?;
+    }
+
+    // Add and configure the u_wind variable
+    {
+        let mut u_wind_var = file.add_variable::<f32>("u_wind", &["time", "lat", "lon"])?;
+        u_wind_var.put_attribute("units", "m/s")?;
+        u_wind_var.put_attribute("long_name", "Eastward Wind")?;
+        u_wind_var.put_attribute("standard_name", "eastward_wind")?;
+        u_wind_var.put_values(&u_wind_data, &[.., .., ..])?;
+    }
+
+    // Add and configure the v_wind variable
+    {
+        let mut v_wind_var = file.add_variable::<f32>("v_wind", &["time", "lat", "lon"])?;
+        v_wind_var.put_attribute("units", "m/s")?;
+        v_wind_var.put_attribute("long_name", "Northward Wind")?;
+        v_wind_var.put_attribute("standard_name", "northward_wind")?;
+        v_wind_var.put_values(&v_wind_data, &[.., .., ..])?;
+    }
+
+    // Add and configure the pressure variable
+    {
+        let mut pressure_var = file.add_variable::<f32>("pressure", &["time", "lat", "lon"])?;
+        pressure_var.put_attribute("units", "hPa")?;
+        pressure_var.put_attribute("long_name", "Sea Level Pressure")?;
+        pressure_var.put_attribute("standard_name", "air_pressure_at_sea_level")?;
+        pressure_var.put_values(&pressure_data, &[.., .., ..])?;
+    }
+
+    // Add and configure the precipitation variable
+    {
+        let mut precip_var = file.add_variable::<f32>("precipitation", &["time", "lat", "lon"])?;
+        precip_var.put_attribute("units", "mm/day")?;
+        precip_var.put_attribute("long_name", "Precipitation Rate")?;
+        precip_var.put_attribute("standard_name", "precipitation_rate")?;
+        precip_var.put_values(&precip_data, &[.., .., ..])?;
+    }
 
     Ok(())
 }
@@ -408,7 +440,11 @@ mod tests {
         let dir = tempdir().unwrap();
         let file_path = dir.path().join("linear_gradient.nc");
 
-        assert!(create_linear_gradient_nc(&file_path, (10, 10)).is_ok());
+        let result = create_linear_gradient_nc(&file_path, (10, 10));
+        if let Err(e) = &result {
+            println!("Error creating linear gradient NC file: {:?}", e);
+        }
+        assert!(result.is_ok());
         assert!(file_path.exists());
 
         // Verify we can open and read the file
