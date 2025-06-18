@@ -8,9 +8,13 @@ use thiserror::Error;
 /// The main error type for rossby operations.
 #[derive(Error, Debug)]
 pub enum RossbyError {
-    /// NetCDF file operation errors
-    #[error("NetCDF error: {message}")]
-    NetCdf { message: String },
+/// NetCDF file operation errors
+#[error("NetCDF error: {message}")]
+NetCdf { message: String },
+
+/// Conversion errors
+#[error("Conversion error: {message}")]
+Conversion { message: String },
 
     /// IO errors
     #[error("IO error: {0}")]
@@ -51,3 +55,51 @@ pub enum RossbyError {
 
 /// Convenience type alias for Results with RossbyError
 pub type Result<T> = std::result::Result<T, RossbyError>;
+
+// Implement From for common error types
+impl From<String> for RossbyError {
+    fn from(message: String) -> Self {
+        RossbyError::Server { message }
+    }
+}
+
+impl From<&str> for RossbyError {
+    fn from(message: &str) -> Self {
+        RossbyError::Server { message: message.to_string() }
+    }
+}
+
+impl From<std::num::ParseIntError> for RossbyError {
+    fn from(err: std::num::ParseIntError) -> Self {
+        RossbyError::Conversion { message: err.to_string() }
+    }
+}
+
+impl From<std::num::ParseFloatError> for RossbyError {
+    fn from(err: std::num::ParseFloatError) -> Self {
+        RossbyError::Conversion { message: err.to_string() }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_error_conversions() {
+        // Test string to error conversion
+        let err: RossbyError = "test error".into();
+        match err {
+            RossbyError::Server { message } => assert_eq!(message, "test error"),
+            _ => panic!("Wrong error variant"),
+        }
+
+        // Test parse int error conversion
+        let parse_err = "abc".parse::<i32>().unwrap_err();
+        let err: RossbyError = parse_err.into();
+        match err {
+            RossbyError::Conversion { message } => assert!(message.contains("invalid digit")),
+            _ => panic!("Wrong error variant"),
+        }
+    }
+}

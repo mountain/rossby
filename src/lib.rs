@@ -5,6 +5,19 @@
 //! This library provides the core functionality for loading NetCDF files into memory
 //! and serving them via a high-performance HTTP API with support for interpolation
 //! and visualization.
+//!
+//! ## Key Features
+//!
+//! - **Zero-configuration NetCDF serving**: Load any NetCDF file and instantly serve it via HTTP API
+//! - **Blazing-fast performance**: In-memory data storage with microsecond query latency
+//! - **Rich interpolation support**: Multiple interpolation methods for flexible data access
+//! - **Beautiful visualizations**: Matplotlib-inspired colormaps for image generation
+//!
+//! ## Architecture
+//!
+//! - **Data Layer**: Loads NetCDF files into memory for fast access
+//! - **API Layer**: Exposes data through a RESTful HTTP API
+//! - **Processing**: Supports multiple interpolation methods and colormap rendering
 
 pub mod colormaps;
 pub mod config;
@@ -16,4 +29,4 @@ pub mod state;
 
 pub use config::Config;
 pub use error::{Result, RossbyError};
-pub use state::AppState;
+pub use state::{AppState, Metadata, Variable, Dimension, AttributeValue};
