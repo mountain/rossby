@@ -17,7 +17,7 @@ tower = "0.4"
 tower-http = { version = "0.5", features = ["cors", "trace"] }
 
 # NetCDF and data handling
-# netcdf = { version = "0.9", features = ["static"] }  # Temporarily disabled due to HDF5 compatibility
+netcdf = { version = "0.9", features = ["static"], optional = true }
 ndarray = "0.15"
 
 # CLI and configuration
@@ -45,6 +45,10 @@ criterion = { version = "0.5", features = ["html_reports"] }
 reqwest = { version = "0.11", features = ["json"] }
 tempfile = "3"
 pretty_assertions = "1"
+
+[features]
+default = ["netcdf"]
+netcdf = ["dep:netcdf"]
 
 [profile.release]
 lto = true

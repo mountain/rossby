@@ -1,10 +1,14 @@
 //! NetCDF data loading functionality.
 //!
 //! This module handles reading NetCDF files and loading them into memory.
+//! It converts NetCDF variables and metadata into a format that can be efficiently
+//! accessed by the application.
 
-use ndarray::{Array, IxDyn};
+use ndarray::{Array, Dim, IxDyn};
+use netcdf::{self, Attribute, Variable as NetCDFVariable};
 use std::collections::HashMap;
 use std::path::Path;
+use tracing::{debug, info, warn};
 
 use crate::config::Config;
 use crate::error::{Result, RossbyError};
@@ -33,9 +37,6 @@ pub fn load_netcdf(path: &Path, config: Config) -> Result<AppState> {
 
 /// Load a NetCDF file into memory, returning metadata and data
 fn load_netcdf_file(path: &Path) -> LoadResult {
-    // TODO: Implement NetCDF loading
-    // This is a placeholder that will be implemented in Phase 4
-
     // Check if the file exists
     if !path.exists() {
         return Err(RossbyError::Io(std::io::Error::new(
@@ -44,106 +45,343 @@ fn load_netcdf_file(path: &Path) -> LoadResult {
         )));
     }
 
-    // In Phase 4, we'll replace this with actual NetCDF loading code
-    // For now, create placeholder metadata and data structures
-    let metadata = create_placeholder_metadata(path);
-    let data = create_placeholder_data(&metadata);
+    // Open the NetCDF file
+    let file = match netcdf::open(path) {
+        Ok(f) => f,
+        Err(e) => {
+            return Err(RossbyError::NetCdf {
+                message: format!("Failed to open NetCDF file: {}", e),
+            });
+        }
+    };
+
+    info!("Opened NetCDF file: {}", path.display());
+    debug!("File has {} variables", file.variables().len());
+    debug!("File has {} dimensions", file.dimensions().len());
+
+    // Extract file metadata
+    let metadata = extract_metadata(&file)?;
+
+    // Extract data from variables
+    let data = extract_data(&file, &metadata)?;
 
     Ok((metadata, data))
 }
 
-/// Create placeholder metadata for testing
-fn create_placeholder_metadata(path: &Path) -> Metadata {
-    // This will be replaced with actual loading code in Phase 4
-    // For now, just create some basic metadata for development
-
+/// Extract metadata from the NetCDF file
+fn extract_metadata(file: &netcdf::File) -> Result<Metadata> {
+    // Extract global attributes
     let mut global_attributes = HashMap::new();
-    global_attributes.insert(
-        "title".to_string(),
-        AttributeValue::Text("Rossby Development File".to_string()),
-    );
-    global_attributes.insert(
-        "source".to_string(),
-        AttributeValue::Text(format!("File: {}", path.display())),
-    );
+    for attr in file.attributes() {
+        let value = convert_attribute(attr)?;
+        global_attributes.insert(attr.name(), value);
+    }
 
+    // Extract dimensions
     let mut dimensions = HashMap::new();
-    dimensions.insert(
-        "lon".to_string(),
-        Dimension {
-            name: "lon".to_string(),
-            size: 180,
-            is_unlimited: false,
-        },
-    );
-    dimensions.insert(
-        "lat".to_string(),
-        Dimension {
-            name: "lat".to_string(),
-            size: 90,
-            is_unlimited: false,
-        },
-    );
-    dimensions.insert(
-        "time".to_string(),
-        Dimension {
-            name: "time".to_string(),
-            size: 10,
-            is_unlimited: true,
-        },
-    );
+    for dim in file.dimensions() {
+        let dimension = Dimension {
+            name: dim.name().to_string(),
+            size: dim.len(),
+            is_unlimited: dim.is_unlimited(),
+        };
+        dimensions.insert(dim.name().to_string(), dimension);
+    }
 
+    // Extract variables and their metadata
     let mut variables = HashMap::new();
-    let mut temp_attrs = HashMap::new();
-    temp_attrs.insert("units".to_string(), AttributeValue::Text("K".to_string()));
-    temp_attrs.insert(
-        "long_name".to_string(),
-        AttributeValue::Text("Temperature".to_string()),
-    );
-
-    variables.insert(
-        "temperature".to_string(),
-        Variable {
-            name: "temperature".to_string(),
-            dimensions: vec!["time".to_string(), "lat".to_string(), "lon".to_string()],
-            shape: vec![10, 90, 180],
-            attributes: temp_attrs,
-            dtype: "f32".to_string(),
-        },
-    );
-
     let mut coordinates = HashMap::new();
-    coordinates.insert("lon".to_string(), (-180..180).map(|i| i as f64).collect());
-    coordinates.insert("lat".to_string(), (-45..45).map(|i| i as f64).collect());
-    coordinates.insert("time".to_string(), (0..10).map(|i| i as f64).collect());
 
-    Metadata {
+    for var in file.variables() {
+        // Skip variables we can't handle (non-numeric types)
+        if !is_supported_variable(&var) {
+            warn!("Skipping unsupported variable: {}", var.name());
+            continue;
+        }
+
+        // Extract variable dimensions
+        let var_dims: Vec<String> = var
+            .dimensions()
+            .iter()
+            .map(|dim| dim.name().to_string())
+            .collect();
+
+        // Extract variable shape
+        let var_shape: Vec<usize> = var_dims
+            .iter()
+            .map(|name| file.dimension(name).unwrap().len())
+            .collect();
+
+        // Extract variable attributes
+        let mut var_attrs = HashMap::new();
+        for attr in var.attributes() {
+            let value = convert_attribute(attr)?;
+            var_attrs.insert(attr.name().to_string(), value);
+        }
+
+        // Create variable metadata
+        let variable = Variable {
+            name: var.name().to_string(),
+            dimensions: var_dims,
+            shape: var_shape,
+            attributes: var_attrs,
+            dtype: format!("{:?}", var.vartype()),
+        };
+
+        variables.insert(var.name().to_string(), variable);
+
+        // If this is a coordinate variable (name matches a dimension),
+        // extract the coordinate values
+        if file.dimension(var.name()).is_some() {
+            let coord_values = extract_coordinate_values(&var)?;
+            coordinates.insert(var.name().to_string(), coord_values);
+        }
+    }
+
+    // Check for missing coordinate variables and create them if needed
+    for dim_name in dimensions.keys() {
+        if !coordinates.contains_key(dim_name) {
+            // Create a default coordinate (0-based indices)
+            let dim_size = dimensions[dim_name].size;
+            let coord_values: Vec<f64> = (0..dim_size).map(|i| i as f64).collect();
+            coordinates.insert(dim_name.to_string(), coord_values);
+
+            warn!("Created default coordinates for dimension: {}", dim_name);
+        }
+    }
+
+    Ok(Metadata {
         global_attributes,
         dimensions,
         variables,
         coordinates,
+    })
+}
+
+/// Check if a variable has a supported type that we can work with
+fn is_supported_variable(var: &NetCDFVariable) -> bool {
+    use netcdf::types::BasicType;
+
+    match var.vartype() {
+        BasicType::Byte
+        | BasicType::Char
+        | BasicType::Short
+        | BasicType::Int
+        | BasicType::Float
+        | BasicType::Double => true,
+        _ => false,
     }
 }
 
-/// Create placeholder data arrays for testing
-fn create_placeholder_data(metadata: &Metadata) -> HashMap<String, Array<f32, IxDyn>> {
-    // This will be replaced with actual loading code in Phase 4
+/// Convert a NetCDF attribute to our AttributeValue enum
+fn convert_attribute(attr: Attribute) -> Result<AttributeValue> {
+    use netcdf::types::BasicType;
+
+    match attr.vartype() {
+        // String types
+        BasicType::Char => {
+            let value = attr.value::<String>()?;
+            Ok(AttributeValue::Text(value))
+        }
+        // Numeric types - store as f64 for simplicity
+        BasicType::Byte => {
+            if attr.len() == 1 {
+                let value = attr.value::<i8>()? as f64;
+                Ok(AttributeValue::Number(value))
+            } else {
+                let values: Vec<i8> = attr.values()?;
+                let f64_values: Vec<f64> = values.into_iter().map(|v| v as f64).collect();
+                Ok(AttributeValue::NumberArray(f64_values))
+            }
+        }
+        BasicType::Short => {
+            if attr.len() == 1 {
+                let value = attr.value::<i16>()? as f64;
+                Ok(AttributeValue::Number(value))
+            } else {
+                let values: Vec<i16> = attr.values()?;
+                let f64_values: Vec<f64> = values.into_iter().map(|v| v as f64).collect();
+                Ok(AttributeValue::NumberArray(f64_values))
+            }
+        }
+        BasicType::Int => {
+            if attr.len() == 1 {
+                let value = attr.value::<i32>()? as f64;
+                Ok(AttributeValue::Number(value))
+            } else {
+                let values: Vec<i32> = attr.values()?;
+                let f64_values: Vec<f64> = values.into_iter().map(|v| v as f64).collect();
+                Ok(AttributeValue::NumberArray(f64_values))
+            }
+        }
+        BasicType::Float => {
+            if attr.len() == 1 {
+                let value = attr.value::<f32>()? as f64;
+                Ok(AttributeValue::Number(value))
+            } else {
+                let values: Vec<f32> = attr.values()?;
+                let f64_values: Vec<f64> = values.into_iter().map(|v| v as f64).collect();
+                Ok(AttributeValue::NumberArray(f64_values))
+            }
+        }
+        BasicType::Double => {
+            if attr.len() == 1 {
+                let value = attr.value::<f64>()?;
+                Ok(AttributeValue::Number(value))
+            } else {
+                let values: Vec<f64> = attr.values()?;
+                Ok(AttributeValue::NumberArray(values))
+            }
+        }
+        _ => {
+            // Unsupported types - convert to string representation
+            Ok(AttributeValue::Text(format!("{:?}", attr.vartype())))
+        }
+    }
+}
+
+/// Extract coordinate values from a coordinate variable
+fn extract_coordinate_values(var: &NetCDFVariable) -> Result<Vec<f64>> {
+    use netcdf::types::BasicType;
+
+    match var.vartype() {
+        BasicType::Byte => {
+            let values: Vec<i8> = var.values()?;
+            Ok(values.into_iter().map(|v| v as f64).collect())
+        }
+        BasicType::Short => {
+            let values: Vec<i16> = var.values()?;
+            Ok(values.into_iter().map(|v| v as f64).collect())
+        }
+        BasicType::Int => {
+            let values: Vec<i32> = var.values()?;
+            Ok(values.into_iter().map(|v| v as f64).collect())
+        }
+        BasicType::Float => {
+            let values: Vec<f32> = var.values()?;
+            Ok(values.into_iter().map(|v| v as f64).collect())
+        }
+        BasicType::Double => {
+            let values: Vec<f64> = var.values()?;
+            Ok(values)
+        }
+        _ => {
+            // For unsupported types, create a sequence of indices
+            let indices: Vec<f64> = (0..var.dimensions()[0].len()).map(|i| i as f64).collect();
+            warn!(
+                "Unsupported coordinate variable type: {:?}, using indices instead",
+                var.vartype()
+            );
+            Ok(indices)
+        }
+    }
+}
+
+/// Extract data from the NetCDF variables
+fn extract_data(
+    file: &netcdf::File,
+    metadata: &Metadata,
+) -> Result<HashMap<String, Array<f32, IxDyn>>> {
     let mut data = HashMap::new();
 
-    // In Phase 4, this will load real data from the NetCDF file
-    // For now, just create some empty arrays with the right dimensions
-    for (name, var) in &metadata.variables {
-        // Create a shape vector from the variable's dimensions
-        let shape: Vec<_> = var.shape.to_vec();
+    for var_name in metadata.variables.keys() {
+        if let Some(var) = file.variable(var_name) {
+            // Only process variables we can handle
+            if !is_supported_variable(&var) {
+                continue;
+            }
 
-        // Create an empty array with the right shape
-        // In Phase 4, this will be filled with actual data from the NetCDF file
-        let array = Array::<f32, _>::zeros(shape);
+            // Get the variable's shape
+            let shape = &metadata.variables[var_name].shape;
 
-        data.insert(name.clone(), array);
+            // Convert the data to f32 array
+            let array = convert_variable_to_array(&var, shape)?;
+            data.insert(var_name.clone(), array);
+        }
     }
 
-    data
+    Ok(data)
+}
+
+/// Convert a NetCDF variable to an ndarray Array<f32, IxDyn>
+fn convert_variable_to_array(var: &NetCDFVariable, shape: &[usize]) -> Result<Array<f32, IxDyn>> {
+    use netcdf::types::BasicType;
+
+    // Create the shape for the ndarray
+    let dim = Dim(shape.to_vec());
+
+    match var.vartype() {
+        BasicType::Byte => {
+            let data: Vec<i8> = var.values()?;
+            let array = Array::from_shape_vec(dim, data.into_iter().map(|v| v as f32).collect())?;
+            Ok(array)
+        }
+        BasicType::Short => {
+            let data: Vec<i16> = var.values()?;
+            let array = Array::from_shape_vec(dim, data.into_iter().map(|v| v as f32).collect())?;
+            Ok(array)
+        }
+        BasicType::Int => {
+            let data: Vec<i32> = var.values()?;
+            let array = Array::from_shape_vec(dim, data.into_iter().map(|v| v as f32).collect())?;
+            Ok(array)
+        }
+        BasicType::Float => {
+            let data: Vec<f32> = var.values()?;
+            let array = Array::from_shape_vec(dim, data)?;
+            Ok(array)
+        }
+        BasicType::Double => {
+            let data: Vec<f64> = var.values()?;
+            let array = Array::from_shape_vec(dim, data.into_iter().map(|v| v as f32).collect())?;
+            Ok(array)
+        }
+        _ => Err(RossbyError::NetCdf {
+            message: format!("Unsupported variable type: {:?}", var.vartype()),
+        }),
+    }
+}
+
+/// Create a test NetCDF file with sample data for testing
+#[cfg(test)]
+fn create_test_netcdf_file(path: &Path) -> Result<()> {
+    use netcdf::types::BasicType;
+
+    // Create a new NetCDF file
+    let mut file = netcdf::create(path)?;
+
+    // Add dimensions
+    let lon_dim = file.add_dimension("lon", 4)?;
+    let lat_dim = file.add_dimension("lat", 3)?;
+    let time_dim = file.add_unlimited_dimension("time")?;
+
+    // Add variables
+    let mut lon_var = file.add_variable::<f64>("lon", &[&lon_dim])?;
+    let mut lat_var = file.add_variable::<f64>("lat", &[&lat_dim])?;
+    let mut time_var = file.add_variable::<f64>("time", &[&time_dim])?;
+    let mut temp_var = file.add_variable::<f32>("temperature", &[&time_dim, &lat_dim, &lon_dim])?;
+
+    // Add attributes
+    file.add_attribute("title", "Rossby Test File")?;
+    file.add_attribute("source", "test")?;
+
+    lon_var.add_attribute("units", "degrees_east")?;
+    lat_var.add_attribute("units", "degrees_north")?;
+    time_var.add_attribute("units", "days since 2000-01-01")?;
+
+    temp_var.add_attribute("units", "K")?;
+    temp_var.add_attribute("long_name", "Temperature")?;
+
+    // Write data
+    lon_var.put_values(&[0.0, 1.0, 2.0, 3.0], None, None)?;
+    lat_var.put_values(&[0.0, 1.0, 2.0], None, None)?;
+    time_var.put_values(&[0.0, 1.0], None, None)?;
+
+    // Create temperature data (2 time steps, 3 lat, 4 lon = 24 values)
+    let temp_data: Vec<f32> = (0..24).map(|i| i as f32).collect();
+    temp_var.put_values(&temp_data, None, None)?;
+
+    Ok(())
 }
 
 /// Validate the loaded NetCDF data for consistency
@@ -229,8 +467,6 @@ fn validate_netcdf_data(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::fs::File;
-    use std::io::Write;
     use tempfile::tempdir;
 
     #[test]
@@ -244,18 +480,18 @@ mod tests {
     }
 
     #[test]
-    fn test_placeholder_metadata() {
-        // Create a temporary file for testing
+    fn test_netcdf_loading() -> Result<()> {
+        // Create a temporary directory for the test file
         let dir = tempdir().unwrap();
         let file_path = dir.path().join("test.nc");
-        File::create(&file_path)
-            .unwrap()
-            .write_all(b"test")
-            .unwrap();
 
-        let metadata = create_placeholder_metadata(&file_path);
+        // Create a test NetCDF file
+        create_test_netcdf_file(&file_path)?;
 
-        // Verify the placeholder metadata
+        // Load the file
+        let (metadata, data) = load_netcdf_file(&file_path)?;
+
+        // Verify the metadata
         assert!(metadata.global_attributes.contains_key("title"));
         assert!(metadata.dimensions.contains_key("lon"));
         assert!(metadata.dimensions.contains_key("lat"));
@@ -264,44 +500,76 @@ mod tests {
         assert!(metadata.coordinates.contains_key("lon"));
 
         // Check specific values
-        assert_eq!(metadata.dimensions["lon"].size, 180);
-        assert_eq!(metadata.dimensions["lat"].size, 90);
+        assert_eq!(metadata.dimensions["lon"].size, 4);
+        assert_eq!(metadata.dimensions["lat"].size, 3);
+        assert_eq!(metadata.dimensions["time"].size, 2);
         assert_eq!(metadata.variables["temperature"].dimensions.len(), 3);
-    }
 
-    #[test]
-    fn test_placeholder_data() {
-        // Create placeholder metadata
-        let dir = tempdir().unwrap();
-        let file_path = dir.path().join("test.nc");
-        File::create(&file_path)
-            .unwrap()
-            .write_all(b"test")
-            .unwrap();
-
-        let metadata = create_placeholder_metadata(&file_path);
-        let data = create_placeholder_data(&metadata);
+        // Check coordinates
+        assert_eq!(metadata.coordinates["lon"], vec![0.0, 1.0, 2.0, 3.0]);
+        assert_eq!(metadata.coordinates["lat"], vec![0.0, 1.0, 2.0]);
+        assert_eq!(metadata.coordinates["time"], vec![0.0, 1.0]);
 
         // Verify the data
         assert!(data.contains_key("temperature"));
         let temp_data = &data["temperature"];
-        assert_eq!(temp_data.shape(), &[10, 90, 180]);
+        assert_eq!(temp_data.shape(), &[2, 3, 4]);
+
+        // Check the first few values
+        assert_eq!(temp_data[[0, 0, 0]], 0.0);
+        assert_eq!(temp_data[[0, 0, 1]], 1.0);
+        assert_eq!(temp_data[[0, 0, 2]], 2.0);
+
+        Ok(())
     }
 
     #[test]
-    fn test_validation() {
-        // Create valid metadata and data
+    fn test_attribute_conversion() -> Result<()> {
+        // Create a temporary directory for the test file
         let dir = tempdir().unwrap();
         let file_path = dir.path().join("test.nc");
-        File::create(&file_path)
-            .unwrap()
-            .write_all(b"test")
-            .unwrap();
 
-        let metadata = create_placeholder_metadata(&file_path);
-        let data = create_placeholder_data(&metadata);
+        // Create a test NetCDF file
+        create_test_netcdf_file(&file_path)?;
+
+        // Load the file
+        let (metadata, _) = load_netcdf_file(&file_path)?;
+
+        // Check global attributes
+        match &metadata.global_attributes["title"] {
+            AttributeValue::Text(text) => assert_eq!(text, "Rossby Test File"),
+            _ => panic!("Expected Text attribute"),
+        }
+
+        // Check variable attributes
+        match &metadata.variables["temperature"].attributes["units"] {
+            AttributeValue::Text(text) => assert_eq!(text, "K"),
+            _ => panic!("Expected Text attribute"),
+        }
+
+        match &metadata.variables["temperature"].attributes["long_name"] {
+            AttributeValue::Text(text) => assert_eq!(text, "Temperature"),
+            _ => panic!("Expected Text attribute"),
+        }
+
+        Ok(())
+    }
+
+    #[test]
+    fn test_validation() -> Result<()> {
+        // Create a temporary directory for the test file
+        let dir = tempdir().unwrap();
+        let file_path = dir.path().join("test.nc");
+
+        // Create a test NetCDF file
+        create_test_netcdf_file(&file_path)?;
+
+        // Load the file
+        let (metadata, data) = load_netcdf_file(&file_path)?;
 
         // Validation should pass
         assert!(validate_netcdf_data(&metadata, &data).is_ok());
+
+        Ok(())
     }
 }

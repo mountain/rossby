@@ -87,6 +87,14 @@ impl From<std::num::ParseFloatError> for RossbyError {
     }
 }
 
+impl From<ndarray::ShapeError> for RossbyError {
+    fn from(err: ndarray::ShapeError) -> Self {
+        RossbyError::Conversion {
+            message: format!("Array shape error: {}", err),
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
