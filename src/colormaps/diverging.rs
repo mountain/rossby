@@ -14,7 +14,7 @@ impl Colormap for Coolwarm {
         let v = (value * 255.0) as u8;
         [v, v, v, 255]
     }
-    
+
     fn name(&self) -> &str {
         "coolwarm"
     }
@@ -30,7 +30,7 @@ impl Colormap for RdBu {
         let v = (value * 255.0) as u8;
         [v, v, v, 255]
     }
-    
+
     fn name(&self) -> &str {
         "rdbu"
     }
@@ -46,7 +46,7 @@ impl Colormap for Seismic {
         let v = (value * 255.0) as u8;
         [v, v, v, 255]
     }
-    
+
     fn name(&self) -> &str {
         "seismic"
     }
@@ -63,4 +63,3 @@ mod tests {
         assert_eq!(Seismic.name(), "seismic");
     }
 }
->>>>>>> REPLACE

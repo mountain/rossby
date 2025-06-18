@@ -14,7 +14,7 @@ impl Colormap for Viridis {
         let v = (value * 255.0) as u8;
         [v, v, v, 255]
     }
-    
+
     fn name(&self) -> &str {
         "viridis"
     }
@@ -29,7 +29,7 @@ impl Colormap for Plasma {
         let v = (value * 255.0) as u8;
         [v, v, v, 255]
     }
-    
+
     fn name(&self) -> &str {
         "plasma"
     }
@@ -44,7 +44,7 @@ impl Colormap for Inferno {
         let v = (value * 255.0) as u8;
         [v, v, v, 255]
     }
-    
+
     fn name(&self) -> &str {
         "inferno"
     }
@@ -59,7 +59,7 @@ impl Colormap for Magma {
         let v = (value * 255.0) as u8;
         [v, v, v, 255]
     }
-    
+
     fn name(&self) -> &str {
         "magma"
     }
@@ -74,7 +74,7 @@ impl Colormap for Cividis {
         let v = (value * 255.0) as u8;
         [v, v, v, 255]
     }
-    
+
     fn name(&self) -> &str {
         "cividis"
     }

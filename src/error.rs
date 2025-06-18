@@ -8,9 +8,9 @@ use thiserror::Error;
 /// The main error type for rossby operations.
 #[derive(Error, Debug)]
 pub enum RossbyError {
-/// NetCDF file operation errors
-#[error("NetCDF error: {message}")]
-NetCdf { message: String },
+    /// NetCDF file operation errors
+    #[error("NetCDF error: {message}")]
+    NetCdf { message: String },
 
     /// IO errors
     #[error("IO error: {0}")]

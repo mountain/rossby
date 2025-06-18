@@ -3,23 +3,18 @@
 //! This module provides various interpolation methods for querying
 //! values at arbitrary points within the data grid.
 
+pub mod bicubic;
+pub mod bilinear;
 pub mod common;
 pub mod nearest;
-pub mod bilinear;
-pub mod bicubic;
 
 use crate::error::Result;
 
 /// Trait for interpolation methods
 pub trait Interpolator {
     /// Interpolate a value at the given fractional indices
-    fn interpolate(
-        &self,
-        data: &[f32],
-        shape: &[usize],
-        indices: &[f64],
-    ) -> Result<f32>;
-    
+    fn interpolate(&self, data: &[f32], shape: &[usize], indices: &[f64]) -> Result<f32>;
+
     /// Get the name of this interpolation method
     fn name(&self) -> &str;
 }

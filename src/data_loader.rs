@@ -13,7 +13,7 @@ use crate::state::{AttributeValue, Dimension, Metadata, Variable};
 pub fn load_netcdf(path: &Path) -> Result<(Metadata, HashMap<String, Array<f32, IxDyn>>)> {
     // TODO: Implement NetCDF loading
     // This is a placeholder that will be implemented in Phase 4
-    
+
     // Check if the file exists
     if !path.exists() {
         return Err(RossbyError::Io(std::io::Error::new(
@@ -29,9 +29,9 @@ pub fn load_netcdf(path: &Path) -> Result<(Metadata, HashMap<String, Array<f32, 
         variables: HashMap::new(),
         coordinates: HashMap::new(),
     };
-    
+
     let data = HashMap::new();
-    
+
     Ok((metadata, data))
 }
 

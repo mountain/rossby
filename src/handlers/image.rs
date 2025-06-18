@@ -42,12 +42,12 @@ pub async fn image_handler(
 ) -> Response {
     // TODO: Implement image generation
     // This is a placeholder that will be implemented in Phase 6
-    
+
     // For now, return a simple error
     let error = RossbyError::ImageGeneration {
         message: "Image generation not yet implemented".to_string(),
     };
-    
+
     (
         StatusCode::NOT_IMPLEMENTED,
         Json(serde_json::json!({

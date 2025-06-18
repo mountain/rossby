@@ -8,9 +8,7 @@ use std::sync::Arc;
 use crate::state::AppState;
 
 /// Handle GET /metadata requests
-pub async fn metadata_handler(
-    State(state): State<Arc<AppState>>,
-) -> Json<serde_json::Value> {
+pub async fn metadata_handler(State(state): State<Arc<AppState>>) -> Json<serde_json::Value> {
     // Return the metadata as JSON
     Json(serde_json::json!({
         "global_attributes": state.metadata.global_attributes,

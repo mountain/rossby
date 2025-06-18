@@ -8,7 +8,7 @@ use crate::error::{Result, RossbyError};
 pub trait Colormap: Send + Sync {
     /// Map a normalized value (0.0 to 1.0) to an RGBA color
     fn map_normalized(&self, value: f32) -> [u8; 4];
-    
+
     /// Map a value to an RGBA color given the data range
     fn map(&self, value: f32, min: f32, max: f32) -> [u8; 4] {
         let normalized = if max > min {
@@ -18,15 +18,15 @@ pub trait Colormap: Send + Sync {
         };
         self.map_normalized(normalized)
     }
-    
+
     /// Get the name of this colormap
     fn name(&self) -> &str;
 }
 
 /// Get a colormap by name
 pub fn get_colormap(name: &str) -> Result<Box<dyn Colormap>> {
-    use super::{sequential::*, diverging::*};
-    
+    use super::{diverging::*, sequential::*};
+
     match name.to_lowercase().as_str() {
         "viridis" => Ok(Box::new(Viridis)),
         "plasma" => Ok(Box::new(Plasma)),
@@ -60,7 +60,7 @@ mod tests {
     fn test_lerp_color() {
         let black = [0, 0, 0];
         let white = [255, 255, 255];
-        
+
         let mid = lerp_color(black, white, 0.5);
         assert_eq!(mid[0], 127);
         assert_eq!(mid[1], 127);

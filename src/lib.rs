@@ -6,12 +6,12 @@
 //! and serving them via a high-performance HTTP API with support for interpolation
 //! and visualization.
 
+pub mod colormaps;
 pub mod config;
 pub mod data_loader;
 pub mod error;
 pub mod handlers;
 pub mod interpolation;
-pub mod colormaps;
 pub mod state;
 
 pub use config::Config;

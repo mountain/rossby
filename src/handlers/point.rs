@@ -43,13 +43,13 @@ pub async fn point_handler(
 ) -> Response {
     // TODO: Implement point query with interpolation
     // This is a placeholder that will be implemented in Phase 5
-    
+
     // For now, return a simple error
     let error = RossbyError::InvalidParameter {
         param: "interpolation".to_string(),
         message: "Point queries not yet implemented".to_string(),
     };
-    
+
     (
         StatusCode::NOT_IMPLEMENTED,
         Json(serde_json::json!({

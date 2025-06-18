@@ -89,16 +89,16 @@ impl Config {
     /// Load configuration from all sources with proper precedence
     pub fn load() -> Result<(Self, PathBuf)> {
         let args = Args::parse();
-        
+
         // Start with defaults
         let mut config = Config::default();
-        
+
         // Load from JSON file if provided
         if let Some(config_path) = &args.config {
             let json_config = Self::load_from_file(config_path)?;
             config.merge(json_config);
         }
-        
+
         // Override with command-line arguments
         config.server.host = args.host;
         config.server.port = args.port;
@@ -106,20 +106,20 @@ impl Config {
             config.server.workers = args.workers;
         }
         config.log_level = args.log_level;
-        
+
         // NetCDF file path from command line takes precedence
         let netcdf_path = args.netcdf_file;
-        
+
         Ok((config, netcdf_path))
     }
-    
+
     /// Load configuration from a JSON file
     fn load_from_file(path: &PathBuf) -> Result<Self> {
         let content = std::fs::read_to_string(path)?;
         let config: Config = serde_json::from_str(&content)?;
         Ok(config)
     }
-    
+
     /// Merge another config into this one (other takes precedence)
     fn merge(&mut self, other: Config) {
         self.server.host = other.server.host;
@@ -195,12 +195,12 @@ mod tests {
     fn test_config_merge() {
         let mut config1 = Config::default();
         let mut config2 = Config::default();
-        
+
         config2.server.port = 9000;
         config2.server.workers = Some(4);
-        
+
         config1.merge(config2);
-        
+
         assert_eq!(config1.server.port, 9000);
         assert_eq!(config1.server.workers, Some(4));
     }

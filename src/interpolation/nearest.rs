@@ -9,17 +9,12 @@ use crate::error::Result;
 pub struct NearestInterpolator;
 
 impl Interpolator for NearestInterpolator {
-    fn interpolate(
-        &self,
-        data: &[f32],
-        shape: &[usize],
-        indices: &[f64],
-    ) -> Result<f32> {
+    fn interpolate(&self, data: &[f32], shape: &[usize], indices: &[f64]) -> Result<f32> {
         // TODO: Implement nearest neighbor interpolation
         // This is a placeholder that will be implemented in Phase 5
         Ok(0.0)
     }
-    
+
     fn name(&self) -> &str {
         "nearest"
     }
