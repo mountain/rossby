@@ -134,7 +134,7 @@ fn create_placeholder_data(metadata: &Metadata) -> HashMap<String, Array<f32, Ix
     // For now, just create some empty arrays with the right dimensions
     for (name, var) in &metadata.variables {
         // Create a shape vector from the variable's dimensions
-        let shape: Vec<_> = var.shape.iter().copied().collect();
+        let shape: Vec<_> = var.shape.to_vec();
 
         // Create an empty array with the right shape
         // In Phase 4, this will be filled with actual data from the NetCDF file
