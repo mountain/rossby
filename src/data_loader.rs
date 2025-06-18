@@ -14,6 +14,15 @@ pub fn load_netcdf(path: &Path) -> Result<(Metadata, HashMap<String, Array<f32, 
     // TODO: Implement NetCDF loading
     // This is a placeholder that will be implemented in Phase 4
     
+    // Check if the file exists
+    if !path.exists() {
+        return Err(RossbyError::Io(std::io::Error::new(
+            std::io::ErrorKind::NotFound,
+            format!("File not found: {}", path.display()),
+        )));
+    }
+
+    // Create a placeholder metadata structure
     let metadata = Metadata {
         global_attributes: HashMap::new(),
         dimensions: HashMap::new(),
