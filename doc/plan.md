@@ -31,6 +31,7 @@ graph TB
         SRV --> EP1[/metadata]
         SRV --> EP2[/point]
         SRV --> EP3[/image]
+        SRV --> EP4[/heartbeat]
     end
     
     subgraph "Processing"
@@ -44,6 +45,41 @@ graph TB
         CM --> VIR[viridis]
         CM --> PLM[plasma]
         CM --> CW[coolwarm]
+    end
+    
+    subgraph "Service Discovery"
+        SD[Discovery Module] --> RG[Registration Client]
+        CFG --> SD
+        SRV --> SD
+        RG -->|HTTP POST| DS[Discovery Service]
+        EP4 <-->|Health Check| DS
+    end
+```
+
+### Service Discovery Architecture
+
+```mermaid
+graph TB
+    subgraph "Rossby Server Pool"
+        R1[Rossby Instance 1] -->|Register| DS[Discovery Service]
+        R2[Rossby Instance 2] -->|Register| DS
+        R3[Rossby Instance 3] -->|Register| DS
+        DS -->|Health Check| R1
+        DS -->|Health Check| R2
+        DS -->|Health Check| R3
+    end
+    
+    subgraph "Client Applications"
+        C1[Client] -->|Query Available Services| DS
+        DS -->|Service List| C1
+        C1 -->|Direct Data Access| R1
+        C1 -->|Direct Data Access| R2
+    end
+    
+    subgraph "Management"
+        MS[Management System] -->|Monitor| DS
+        MS -->|Scale/Provision| R3
+        MS -->|View Stats| DS
     end
 ```
 
@@ -259,7 +295,42 @@ graph TB
    - Caching strategies
    - Connection pooling
 
-### Phase 11: Documentation & Polish (Days 19-20)
+### Phase 11: Service Discovery & Management (Days 19-20)
+
+**Goal**: Implement service discovery and management features
+
+1. **Heartbeat Endpoint**:
+   - Create a new `GET /heartbeat` endpoint in handlers/heartbeat.rs
+   - Return JSON with server status information:
+     - Server ID (unique instance identifier)
+     - Uptime (time since server start)
+     - Current timestamp
+     - Memory usage statistics
+     - Dataset information summary
+   - Include basic health check functionality
+
+2. **Service Registration**:
+   - Add discovery URL configuration option:
+     - CLI argument: `--discovery-url`
+     - Environment variable: `ROSSBY_DISCOVERY_URL`
+     - Config file parameter: `discovery_url`
+   - Implement registration logic in a new module (`src/discovery.rs`)
+   - Send POST request to discovery service with server details:
+     - Server ID
+     - Host/port information
+     - Base URL
+     - Metadata URL
+     - File name and variable information
+   - Add automatic re-registration on configurable intervals
+   - Handle failed registrations with exponential backoff
+
+3. **Management Infrastructure**:
+   - Enhance AppState to track instance statistics
+   - Add self-monitoring capabilities
+   - Document the discovery protocol specification
+   - Create example scripts for managing pools of Rossby servers
+
+### Phase 12: Documentation & Polish (Days 21-22)
 
 **Goal**: Production-ready documentation
 
@@ -271,6 +342,7 @@ graph TB
    - API reference with examples
    - Deployment guide
    - Performance tuning guide
+   - Service discovery and clustering guide
 
 ## Testing Strategy
 

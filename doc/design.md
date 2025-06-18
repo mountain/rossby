@@ -93,6 +93,35 @@ A static NetCDF file on disk is the single source of truth, loaded into the proc
         7. Applies the selected resampling method (`nearest`, `bilinear`, `bicubic`, or `auto`) for data grid interpolation.
         8. Maps each interpolated value to a color using a colormap function.
         9. Encodes the buffer as a PNG or JPEG and returns the binary data with the correct `Content-Type` header.
+    - **`GET /heartbeat`**:
+        1. Returns a simple JSON response with server status information.
+        2. Includes timestamp, uptime, server ID, and available memory.
+        3. Can be used by external services for health monitoring and service discovery.
+
+### 4.4. Service Discovery & Management
+
+- **Service Registration:**
+  - At startup, after the server is fully initialized and ready to handle requests, rossby can register itself with a central discovery service.
+  - A configurable `discovery_url` parameter allows specifying where to send registration information.
+  - Registration payload includes:
+    - Server ID (unique identifier)
+    - Host and port information
+    - Base URL for accessing the API
+    - Metadata URL (for dataset discovery)
+    - Available dataset information (file name, variables, dimensions)
+  
+- **Service Management:**
+  - The heartbeat endpoint serves as a health check mechanism for external monitoring.
+  - The central discovery service can use the heartbeat to track:
+    - Server health (up/down status)
+    - Data availability (which datasets are available on which servers)
+    - Load balancing information (for routing clients to appropriate servers)
+  
+- **Auto-scaling:**
+  - With the discovery protocol in place, it becomes possible to:
+    - Automatically scale rossby instances based on demand
+    - Distribute different datasets across a pool of servers
+    - Provide clients with a unified API for accessing all available data
 
 ## 5. Data Flow Walkthroughs
 
