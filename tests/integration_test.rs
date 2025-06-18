@@ -54,6 +54,7 @@ async fn start_test_server() -> SocketAddr {
                 host: "127.0.0.1".to_string(),
                 port: bound_addr.port(),
                 workers: Some(1),
+                discovery_url: None,
             },
             ..Default::default()
         };
@@ -255,7 +256,8 @@ async fn test_heartbeat_endpoint() {
     assert_eq!(response.status(), 200);
 
     let body = response.text().await.expect("Failed to get response body");
-    let json: serde_json::Value = serde_json::from_str(&body).expect("Failed to parse JSON response");
+    let json: serde_json::Value =
+        serde_json::from_str(&body).expect("Failed to parse JSON response");
 
     // Verify the heartbeat response structure
     assert!(json.get("server_id").is_some());
@@ -263,7 +265,7 @@ async fn test_heartbeat_endpoint() {
     assert!(json.get("uptime_seconds").is_some());
     assert!(json.get("status").is_some());
     assert_eq!(json.get("status").unwrap().as_str().unwrap(), "healthy");
-    
+
     // Verify dataset information
     assert!(json.get("dataset").is_some());
     let dataset = json.get("dataset").unwrap();
@@ -273,12 +275,10 @@ async fn test_heartbeat_endpoint() {
     assert!(dataset.get("dimensions").is_some());
     assert!(dataset.get("file_path").is_some());
     assert!(dataset.get("data_memory_bytes").is_some());
-    
+
     // Verify variables list contains our test variables
     let variables = dataset.get("variables").unwrap().as_array().unwrap();
-    let var_names: Vec<_> = variables.iter()
-        .map(|v| v.as_str().unwrap())
-        .collect();
+    let var_names: Vec<_> = variables.iter().map(|v| v.as_str().unwrap()).collect();
     assert!(var_names.contains(&"temperature"));
     assert!(var_names.contains(&"humidity"));
 }

@@ -5,20 +5,17 @@
 use axum::{extract::State, Json};
 use serde::Serialize;
 use std::sync::Arc;
-use std::time::{Duration, SystemTime, UNIX_EPOCH};
+use std::time::{Duration, SystemTime};
 use uuid::Uuid;
 
 use crate::state::AppState;
 
 /// Static server ID generated at compile time
-static SERVER_ID: once_cell::sync::Lazy<String> = once_cell::sync::Lazy::new(|| {
-    Uuid::new_v4().to_string()
-});
+static SERVER_ID: once_cell::sync::Lazy<String> =
+    once_cell::sync::Lazy::new(|| Uuid::new_v4().to_string());
 
 /// Server start time
-static START_TIME: once_cell::sync::Lazy<SystemTime> = once_cell::sync::Lazy::new(|| {
-    SystemTime::now()
-});
+static START_TIME: once_cell::sync::Lazy<SystemTime> = once_cell::sync::Lazy::new(SystemTime::now);
 
 /// Heartbeat response structure
 #[derive(Serialize)]
@@ -62,29 +59,37 @@ pub async fn heartbeat_handler(State(state): State<Arc<AppState>>) -> Json<Heart
     let now = SystemTime::now();
     let timestamp = chrono::DateTime::<chrono::Utc>::from(now)
         .to_rfc3339_opts(chrono::SecondsFormat::Millis, true);
-    
+
     // Calculate uptime
-    let uptime = now.duration_since(*START_TIME).unwrap_or(Duration::from_secs(0));
-    
+    let uptime = now
+        .duration_since(*START_TIME)
+        .unwrap_or(Duration::from_secs(0));
+
     // Get memory usage (platform-dependent)
     let memory_usage = get_memory_usage();
     let available_memory = get_available_memory();
-    
+
     // Calculate approximate memory used by the dataset
     let data_memory = calculate_data_memory_usage(&state);
-    
+
     // Prepare dataset information
     let dataset_info = DatasetInfo {
-        file_path: state.config.file_path.clone(),
+        file_path: state.config.data.file_path.clone().map_or_else(
+            || "<unknown>".to_string(),
+            |p| p.to_string_lossy().to_string(),
+        ),
         variable_count: state.metadata.variables.len(),
         variables: state.metadata.variables.keys().cloned().collect(),
         dimension_count: state.metadata.dimensions.len(),
-        dimensions: state.metadata.dimensions.iter()
-            .map(|(name, size)| (name.clone(), *size))
+        dimensions: state
+            .metadata
+            .dimensions
+            .iter()
+            .map(|(name, dim)| (name.clone(), dim.size))
             .collect(),
         data_memory_bytes: data_memory,
     };
-    
+
     // Create response
     let response = HeartbeatResponse {
         server_id: SERVER_ID.clone(),
@@ -95,20 +100,20 @@ pub async fn heartbeat_handler(State(state): State<Arc<AppState>>) -> Json<Heart
         dataset: dataset_info,
         status: "healthy".to_string(),
     };
-    
+
     Json(response)
 }
 
 /// Calculate approximate memory usage of the dataset
 fn calculate_data_memory_usage(state: &AppState) -> usize {
     let mut total_bytes = 0;
-    
+
     // Add up the size of each ndarray
     for array in state.data.values() {
         // Each element is a f32 (4 bytes)
         total_bytes += array.len() * 4;
     }
-    
+
     total_bytes
 }
 
@@ -118,7 +123,7 @@ fn get_memory_usage() -> Option<u64> {
     {
         use std::fs::File;
         use std::io::Read;
-        
+
         // Read from /proc/self/statm on Linux
         let mut statm = String::new();
         if let Ok(mut file) = File::open("/proc/self/statm") {
@@ -135,18 +140,20 @@ fn get_memory_usage() -> Option<u64> {
         }
         None
     }
-    
+
     #[cfg(target_os = "macos")]
     {
         use std::process::Command;
-        
+
         // Use `ps` command on macOS
         let output = Command::new("ps")
-            .args(&["-o", "rss=", "-p", &std::process::id().to_string()])
+            .args(["-o", "rss=", "-p", &std::process::id().to_string()])
             .output();
-            
+
         if let Ok(output) = output {
-            let rss = String::from_utf8_lossy(&output.stdout).trim().parse::<u64>();
+            let rss = String::from_utf8_lossy(&output.stdout)
+                .trim()
+                .parse::<u64>();
             if let Ok(rss_kb) = rss {
                 // Convert KB to bytes
                 return Some(rss_kb * 1024);
@@ -154,7 +161,7 @@ fn get_memory_usage() -> Option<u64> {
         }
         None
     }
-    
+
     #[cfg(not(any(target_os = "linux", target_os = "macos")))]
     {
         None
@@ -167,7 +174,7 @@ fn get_available_memory() -> Option<u64> {
     {
         use std::fs::File;
         use std::io::{BufRead, BufReader};
-        
+
         // Read from /proc/meminfo on Linux
         if let Ok(file) = File::open("/proc/meminfo") {
             let reader = BufReader::new(file);
@@ -185,20 +192,20 @@ fn get_available_memory() -> Option<u64> {
         }
         None
     }
-    
+
     #[cfg(target_os = "macos")]
     {
         use std::process::Command;
-        
+
         // Use `vm_stat` command on macOS
-        let output = Command::new("vm_stat")
-            .output();
-            
+        let output = Command::new("vm_stat").output();
+
         if let Ok(output) = output {
             let vm_stat = String::from_utf8_lossy(&output.stdout);
-            
+
             // Parse page size
-            let page_size = if let Some(line) = vm_stat.lines().find(|l| l.contains("page size of")) {
+            let page_size = if let Some(line) = vm_stat.lines().find(|l| l.contains("page size of"))
+            {
                 if let Some(size_str) = line.split("page size of ").nth(1) {
                     size_str.trim().parse::<u64>().unwrap_or(4096)
                 } else {
@@ -207,7 +214,7 @@ fn get_available_memory() -> Option<u64> {
             } else {
                 4096
             };
-            
+
             // Find free pages
             if let Some(line) = vm_stat.lines().find(|l| l.starts_with("Pages free:")) {
                 if let Some(count_str) = line.split(':').nth(1) {
@@ -219,7 +226,7 @@ fn get_available_memory() -> Option<u64> {
         }
         None
     }
-    
+
     #[cfg(not(any(target_os = "linux", target_os = "macos")))]
     {
         None
@@ -232,28 +239,53 @@ mod tests {
     use crate::config::Config;
     use crate::state::Metadata;
     use std::collections::HashMap;
-    
+
     #[test]
     fn test_heartbeat_response_structure() {
         // Create a minimal AppState for testing
         let config = Config::default();
+
+        // Create dimensions with proper structure
+        let mut dimensions = HashMap::new();
+        dimensions.insert(
+            "lat".to_string(),
+            crate::state::Dimension {
+                name: "lat".to_string(),
+                size: 180,
+                is_unlimited: false,
+            },
+        );
+        dimensions.insert(
+            "lon".to_string(),
+            crate::state::Dimension {
+                name: "lon".to_string(),
+                size: 360,
+                is_unlimited: false,
+            },
+        );
+        dimensions.insert(
+            "time".to_string(),
+            crate::state::Dimension {
+                name: "time".to_string(),
+                size: 24,
+                is_unlimited: true,
+            },
+        );
+
         let metadata = Metadata {
-            dimensions: HashMap::from([
-                ("lat".to_string(), 180),
-                ("lon".to_string(), 360),
-                ("time".to_string(), 24),
-            ]),
+            dimensions,
             variables: HashMap::new(),
-            attributes: HashMap::new(),
+            global_attributes: HashMap::new(),
             coordinates: HashMap::new(),
         };
+
         let data = HashMap::new();
-        
+
         let state = AppState::new(config, metadata, data);
-        
+
         // Calculate data memory usage
         let memory = calculate_data_memory_usage(&state);
-        
+
         // Since we have no data, it should be 0
         assert_eq!(memory, 0);
     }
