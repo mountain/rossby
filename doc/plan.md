@@ -224,7 +224,14 @@ graph TB
    - PNG/JPEG for images
    - Proper error responses
 
-### Phase 8: Integration Testing (Days 15-16)
+### Phase 8: Better geography features (Days 15-16)
+
+**Goal**: Improving the /image endpoint with Geography features
+- BBox support for different global settings (Eurocentric, America-centered, Pacific-Ocean, or any customized setting): northern polar is at the above and southern polar is at bottom
+- BBox support for area spanning the equators or prime meridian
+- Upsample or downsample by data grid interpolation
+
+### Phase 9: Integration Testing (Days 15-16)
 
 **Goal**: Comprehensive integration tests
 
@@ -238,7 +245,7 @@ graph TB
    - Multiple concurrent requests
    - Memory usage validation
 
-### Phase 9: Performance & Optimization (Days 17-18)
+### Phase 10: Performance & Optimization (Days 17-18)
 
 **Goal**: Optimize for production use
 
@@ -252,7 +259,7 @@ graph TB
    - Caching strategies
    - Connection pooling
 
-### Phase 10: Documentation & Polish (Days 19-20)
+### Phase 11: Documentation & Polish (Days 19-20)
 
 **Goal**: Production-ready documentation
 
