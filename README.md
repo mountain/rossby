@@ -21,6 +21,8 @@ Scientific data is often locked away in static files like NetCDF. `rossby` liber
 - **On-the-fly Interpolation:** Point queries are not limited to the grid; `rossby` provides interpolated values for any coordinate.
 - **Dynamic Image Generation:** Instantly render data slices as PNG or JPEG images for quick visualization.
 - **Flexible Server Configuration:** Configure your server via command-line arguments, environment variables, or a JSON file, inspired by `uwsgi`.
+- **Server Monitoring:** Built-in `/heartbeat` endpoint provides comprehensive server status, including memory usage and uptime.
+- **Service Discovery Ready:** Support for service registration and discovery to enable scalable multi-server deployments.
 
 ## Quick Start
 
@@ -36,8 +38,8 @@ cargo install rossby
 We'll use a sample weather forecast file for this demo.
 
 ```sh
-# (This is a placeholder for a real sample data URL)
-wget [https://example.com/path/to/sample_forecast.nc](https://example.com/path/to/sample_forecast.nc)
+# a real climate data file
+wget [https://github.com/mountain/rossby/raw/refs/heads/main/tests/fixtures/2m_temperature_1982_5.625deg.nc](https://github.com/mountain/rossby/raw/refs/heads/main/tests/fixtures/2m_temperature_1982_5.625deg.nc)
 ```
 
 ### 3\. Run `rossby`
@@ -45,15 +47,15 @@ wget [https://example.com/path/to/sample_forecast.nc](https://example.com/path/t
 Point `rossby` at your NetCDF file. It's that simple.
 
 ```sh
-rossby sample_forecast.nc
+rossby 2m_temperature_1982_5.625deg.nc
 ```
 
 You should see output indicating the server has started, probably on `127.0.0.1:8000`.
 
 ```
-INFO  rossby > Loading metadata from 'sample_forecast.nc'...
-INFO  rossby > Found variables: t2m, sst, u10, v10
-INFO  rossby > Loading data into memory... (~5.2 GB)
+INFO  rossby > Loading NetCDF file: "tests/fixtures/2m_temperature_1982_5.625deg.nc"
+INFO  rossby > Found 4 variables
+INFO  rossby > Found 3 dimensions
 INFO  rossby > Data loaded successfully.
 INFO  axum::server > Listening on [http://127.0.0.1:8000](http://127.0.0.1:8000)
 ```
@@ -98,6 +100,9 @@ rossby [OPTIONS] <NETCDF_FILE>
 
 # Example: Run on a public IP, port 9000, with 8 worker threads
 rossby --host 0.0.0.0 --port 9000 --workers 8 my_data.nc
+
+# Enable service discovery
+rossby --discovery-url http://discovery-service:8080/register my_data.nc
 ```
 
 **JSON Configuration:**
@@ -112,7 +117,8 @@ You can specify a config file with the `--config` flag.
   "server": {
     "host": "0.0.0.0",
     "port": 9000,
-    "workers": 8
+    "workers": 8,
+    "discovery_url": "http://discovery-service:8080/register"
   },
   "data": {
     "interpolation_method": "bilinear",
@@ -125,6 +131,23 @@ You can specify a config file with the `--config` flag.
 
 - **`GET /metadata`**: Returns JSON describing all variables, dimensions, and attributes of the loaded file.
 - **`GET /point`**: Returns interpolated values for one or more variables at a specific point in space-time.
+- **`GET /image`**: Returns a PNG/JPEG image rendering of a variable over a specified region and time.
+- **`GET /heartbeat`**: Returns server status information including uptime, memory usage, and dataset details.
+  - Response includes:
+    - `server_id`: Unique identifier for this server instance
+    - `timestamp`: Current time in ISO 8601 format
+    - `uptime_seconds`: Server uptime in seconds
+    - `memory_usage_bytes`: Process memory usage (if available)
+    - `available_memory_bytes`: Available system memory (if available)
+    - `status`: Server health status ("healthy" under normal conditions)
+    - `dataset`: Object containing dataset information:
+      - `file_path`: Path to the loaded NetCDF file
+      - `variable_count`: Number of variables in the dataset
+      - `variables`: List of variable names
+      - `dimension_count`: Number of dimensions
+      - `dimensions`: List of dimension names and sizes
+      - `data_memory_bytes`: Approximate memory usage of the dataset
+      
 - **`GET /image`**: Returns a PNG/JPEG image rendering of a variable over a specified region and time.
   - `var`: (required) Variable name to render
   - `time_index`: (optional) Time index, defaults to 0
