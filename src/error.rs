@@ -35,6 +35,14 @@ pub enum RossbyError {
     /// Data not found errors
     #[error("Data not found: {message}")]
     DataNotFound { message: String },
+    
+    /// Variable not found errors
+    #[error("Variable not found: {name}")]
+    VariableNotFound { name: String },
+    
+    /// Index out of bounds errors
+    #[error("Index out of bounds: {param}={value}, max allowed is {max}")]
+    IndexOutOfBounds { param: String, value: String, max: usize },
 
     /// Interpolation errors
     #[error("Interpolation error: {message}")]
