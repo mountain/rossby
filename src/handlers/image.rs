@@ -289,6 +289,13 @@ pub async fn image_handler(
     // Process the request
     match generate_image_response(state, params) {
         Ok(response) => response,
+        Err(RossbyError::InvalidVariables { names }) => (
+            StatusCode::BAD_REQUEST,
+            Json(serde_json::json!({
+                "error": format!("Invalid variable(s): [{}]", names.join(", "))
+            })),
+        )
+            .into_response(),
         Err(error) => (
             StatusCode::BAD_REQUEST,
             Json(serde_json::json!({
@@ -302,12 +309,69 @@ pub async fn image_handler(
 /// Helper function to generate image response
 fn generate_image_response(state: Arc<AppState>, params: ImageQuery) -> Result<Response> {
     // Get variable name from query
-    let var_name = params.var;
+    let var_name = params.var.clone(); // Clone var_name here
 
     // Verify variable exists
     if !state.has_variable(&var_name) {
-        return Err(RossbyError::VariableNotFound { name: var_name });
+        return Err(RossbyError::InvalidVariables {
+            names: vec![var_name.clone()],
+        });
     }
+
+    // Check if variable is suitable for image rendering
+    let var_metadata = state.metadata.variables.get(&var_name).ok_or_else(|| RossbyError::VariableNotFound { name: var_name.clone() })?;
+
+    if var_metadata.dimensions.len() < 2 {
+        return Err(RossbyError::VariableNotSuitableForImage { name: var_name.clone() });
+    }
+
+    let mut has_lat = false;
+    let mut has_lon = false;
+    for dim_name in &var_metadata.dimensions {
+        let lower_dim_name = dim_name.to_lowercase();
+        if lower_dim_name.contains("lat") {
+            has_lat = true;
+        }
+        if lower_dim_name.contains("lon") {
+            has_lon = true;
+        }
+    }
+
+    if !has_lat || !has_lon {
+        // More sophisticated check: by attributes of coordinate variables
+        for dim_name in &var_metadata.dimensions {
+            if let Some(coord_var_meta) = state.metadata.variables.get(dim_name) {
+                if let Some(units) = coord_var_meta.attributes.get("units") {
+                    if let crate::state::AttributeValue::Text(unit_str) = units {
+                        let lower_unit_str = unit_str.to_lowercase();
+                        if lower_unit_str == "degrees_north" || lower_unit_str == "degree_north" || lower_unit_str == "degrees_n" || lower_unit_str == "degree_n" {
+                            has_lat = true;
+                        }
+                        if lower_unit_str == "degrees_east" || lower_unit_str == "degree_east" || lower_unit_str == "degrees_e" || lower_unit_str == "degree_e" {
+                            has_lon = true;
+                        }
+                    }
+                }
+                if let Some(standard_name) = coord_var_meta.attributes.get("standard_name") {
+                     if let crate::state::AttributeValue::Text(std_name_str) = standard_name {
+                        let lower_std_name_str = std_name_str.to_lowercase();
+                        if lower_std_name_str == "latitude" {
+                            has_lat = true;
+                        }
+                        if lower_std_name_str == "longitude" {
+                            has_lon = true;
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+
+    if !has_lat || !has_lon {
+        return Err(RossbyError::VariableNotSuitableForImage { name: var_name.clone() });
+    }
+
 
     // Get time index (default to 0)
     let time_index = params.time_index.unwrap_or(0);

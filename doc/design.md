@@ -73,26 +73,32 @@ A static NetCDF file on disk is the single source of truth, loaded into the proc
     - **`GET /point`**:
         1. Receives `lon`, `lat`, `time_index`, `vars` as query parameters.
         2. Accesses the shared `AppState`.
-        3. For each requested variable:
+        3. Validates that all requested variable names in `vars` exist in the NetCDF file's metadata. If not, returns a 400 error.
+        4. For each requested variable:
             a. Maps the incoming `lon`, `lat` coordinates to fractional grid indices based on the coordinate arrays read from the metadata.
             b. Identifies the 4 surrounding grid points (`(x, y)`, `(x+1, y)`, `(x, y+1)`, `(x+1, y+1)`).
             c. Slices the in-memory `ndarray` to retrieve the values at these 4 points for the given `time_index`.
             d. Performs a **bilinear interpolation** using the fractional parts of the grid indices as weights.
-        4. Serializes the results into a JSON object.
+        5. Serializes the results into a JSON object.
     - **`GET /image`**:
         1. Receives `var`, `time_index`, `bbox`, `center`, `wrap_longitude`, `resampling`, etc. as query parameters.
-        2. Normalizes the bounding box coordinates based on the selected map centering:
+        2. Validates that the requested `var` exists in the NetCDF file's metadata. If not, returns a 400 error.
+        3. Checks if the variable is suitable for image rendering:
+            a. Verifies the variable has at least two dimensions.
+            b. Attempts to identify latitude and longitude dimensions by checking dimension names (e.g., "lat", "lon") and attributes of coordinate variables (e.g., `units` like "degrees_north", `standard_name` like "latitude").
+            c. If the variable is not deemed a 2D spatial grid, returns a 400 error.
+        4. Normalizes the bounding box coordinates based on the selected map centering:
            - Eurocentric view (-180° to 180°)
            - Americas-centered view (-90° to 270°)
            - Pacific-centered view (0° to 360°)
            - Custom center (specified longitude as center)
-        3. Handles bounding boxes that cross the International Date Line or Prime Meridian when `wrap_longitude=true`.
-        4. Slices the `ndarray` to get a 2D data array corresponding to the normalized `bbox`.
-        5. Determines the data range (`min`, `max`) for color mapping.
-        6. Creates a buffer using the `image` crate.
-        7. Applies the selected resampling method (`nearest`, `bilinear`, `bicubic`, or `auto`) for data grid interpolation.
-        8. Maps each interpolated value to a color using a colormap function.
-        9. Encodes the buffer as a PNG or JPEG and returns the binary data with the correct `Content-Type` header.
+        5. Handles bounding boxes that cross the International Date Line or Prime Meridian when `wrap_longitude=true`.
+        6. Slices the `ndarray` to get a 2D data array corresponding to the normalized `bbox`.
+        7. Determines the data range (`min`, `max`) for color mapping.
+        8. Creates a buffer using the `image` crate.
+        9. Applies the selected resampling method (`nearest`, `bilinear`, `bicubic`, or `auto`) for data grid interpolation.
+        10. Maps each interpolated value to a color using a colormap function.
+        11. Encodes the buffer as a PNG or JPEG and returns the binary data with the correct `Content-Type` header.
     - **`GET /heartbeat`**:
         1. Returns a simple JSON response with server status information.
         2. Includes timestamp, uptime, server ID, and available memory.

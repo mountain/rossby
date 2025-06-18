@@ -129,9 +129,12 @@ You can specify a config file with the `--config` flag.
 
 ## API Reference
 
-- **`GET /metadata`**: Returns JSON describing all variables, dimensions, and attributes of the loaded file.
-- **`GET /point`**: Returns interpolated values for one or more variables at a specific point in space-time.
-- **`GET /image`**: Returns a PNG/JPEG image rendering of a variable over a specified region and time.
+- **`GET /metadata`**: Returns JSON describing all variables, dimensions, and attributes of the loaded NetCDF file.
+- **`GET /point`**: Returns interpolated values for one or more variables at a specific point in space-time. Requested `vars` are validated against the NetCDF file's metadata.
+  - `lon`, `lat`: (required) Longitude and latitude coordinates.
+  - `time_index`: (optional) Time index (0-based), defaults to 0.
+  - `vars`: (required) Comma-separated list of variable names to query.
+  - `interpolation`: (optional) Interpolation method ("nearest", "bilinear", "bicubic"), defaults to "bilinear".
 - **`GET /heartbeat`**: Returns server status information including uptime, memory usage, and dataset details.
   - Response includes:
     - `server_id`: Unique identifier for this server instance
@@ -147,20 +150,19 @@ You can specify a config file with the `--config` flag.
       - `dimension_count`: Number of dimensions
       - `dimensions`: List of dimension names and sizes
       - `data_memory_bytes`: Approximate memory usage of the dataset
-      
-- **`GET /image`**: Returns a PNG/JPEG image rendering of a variable over a specified region and time.
-  - `var`: (required) Variable name to render
-  - `time_index`: (optional) Time index, defaults to 0
-  - `bbox`: (optional) Bounding box as "min_lon,min_lat,max_lon,max_lat"
+- **`GET /image`**: Returns a PNG/JPEG image rendering of a variable over a specified region and time. The requested `var` is validated against the NetCDF file's metadata. This endpoint is intended for rendering variables that represent data on a 2D latitude-longitude grid.
+  - `var`: (required) Variable name to render.
+  - `time_index`: (optional) Time index, defaults to 0.
+  - `bbox`: (optional) Bounding box as "min_lon,min_lat,max_lon,max_lat".
   - `width`: (optional) Image width in pixels, defaults to 800
   - `height`: (optional) Image height in pixels, defaults to 600
   - `colormap`: (optional) Colormap name (e.g., viridis, plasma, coolwarm), defaults to "viridis"
   - `format`: (optional) Output format: "png" or "jpeg", defaults to "png"
   - `center`: (optional) Map centering: "eurocentric" (-180° to 180°), "americas" (-90° to 270°), "pacific" (0° to 360°), or a custom longitude value, defaults to "eurocentric"
-  - `wrap_longitude`: (optional) Allow bounding boxes that cross the dateline/prime meridian, defaults to false
-  - `resampling`: (optional) Upsampling/downsampling quality: "nearest", "bilinear", "bicubic", or "auto", defaults to "auto" (bilinear)
+  - `wrap_longitude`: (optional) Allow bounding boxes that cross the dateline/prime meridian, defaults to false.
+  - `resampling`: (optional) Upsampling/downsampling quality: "nearest", "bilinear", "bicubic", or "auto", defaults to "auto" (bilinear).
 
-For full details, see the [design.md](https://www.google.com/search?q=design.md) document.
+For full details, see the `doc/design.md` document.
 
 ## Building from Source
 

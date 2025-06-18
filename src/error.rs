@@ -40,6 +40,14 @@ pub enum RossbyError {
     #[error("Variable not found: {name}")]
     VariableNotFound { name: String },
 
+    /// Invalid variables errors
+    #[error("Invalid variable(s): [{}]", names.join(", "))]
+    InvalidVariables { names: Vec<String> },
+
+    /// Variable not suitable for image rendering
+    #[error("Variable {name} is not suitable for image rendering. It must be a 2D grid with latitude and longitude dimensions.")]
+    VariableNotSuitableForImage { name: String },
+
     /// Index out of bounds errors
     #[error("Index out of bounds: {param}={value}, max allowed is {max}")]
     IndexOutOfBounds {

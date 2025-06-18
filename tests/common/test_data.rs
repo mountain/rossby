@@ -516,3 +516,197 @@ mod tests {
         assert!(nc_file.variable("precipitation").is_some());
     }
 }
+
+/// Creates a NetCDF file with varied variable types for testing suitability checks.
+///
+/// Includes:
+/// - A valid 2D spatial variable (lat, lon)
+/// - A 1D variable (time)
+/// - A 2D variable with non-spatial dimensions (level, value_idx)
+/// - Another valid 2D spatial variable for multi-variable point tests
+pub fn create_varied_content_nc(path: &Path) -> Result<()> {
+    let mut file = netcdf::create(path)?;
+
+    // Dimensions
+    file.add_dimension("lon", 10)?;
+    file.add_dimension("lat", 5)?;
+    file.add_dimension("time", 3)?;
+    file.add_dimension("level", 4)?;
+    file.add_dimension("value_idx", 2)?; // A generic second dimension for a non-spatial 2D var
+
+    // Attributes
+    file.add_attribute("title", "Varied Content Test Data")?;
+    file.add_attribute("institution", "rossby test suite")?;
+
+    // Coordinate Variables
+    let lon_vals: Vec<f32> = (0..10).map(|i| i as f32 * 10.0).collect();
+    let lat_vals: Vec<f32> = (0..5).map(|i| i as f32 * 10.0).collect();
+    let time_vals: Vec<f32> = (0..3).map(|i| i as f32).collect();
+    let level_vals: Vec<f32> = (0..4).map(|i| i as f32 * 100.0).collect();
+    let value_idx_vals: Vec<f32> = (0..2).map(|i| i as f32).collect();
+
+    let mut lon_var = file.add_variable::<f32>("lon", &["lon"])?;
+    lon_var.put_attribute("units", "degrees_east")?;
+    lon_var.put_attribute("standard_name", "longitude")?;
+    lon_var.put_values(&lon_vals, &[..])?;
+
+    let mut lat_var = file.add_variable::<f32>("lat", &["lat"])?;
+    lat_var.put_attribute("units", "degrees_north")?;
+    lat_var.put_attribute("standard_name", "latitude")?;
+    lat_var.put_values(&lat_vals, &[..])?;
+
+    let mut time_var = file.add_variable::<f32>("time", &["time"])?;
+    time_var.put_attribute("units", "seconds")?;
+    time_var.put_attribute("standard_name", "time")?;
+    time_var.put_values(&time_vals, &[..])?;
+
+    let mut level_var = file.add_variable::<f32>("level", &["level"])?;
+    level_var.put_attribute("units", "hPa")?;
+    level_var.put_attribute("standard_name", "air_pressure")?; // common for level data
+    level_var.put_values(&level_vals, &[..])?;
+
+    let mut value_idx_var = file.add_variable::<f32>("value_idx", &["value_idx"])?;
+    value_idx_var.put_attribute("units", "count")?;
+    value_idx_var.put_values(&value_idx_vals, &[..])?;
+
+
+    // Data Variables
+    // 1. temp_map_2d (lat, lon) - Valid for image rendering
+    let temp_data_2d: Vec<f32> = (0..(5 * 10)).map(|i| i as f32).collect();
+    let mut temp_map_var = file.add_variable::<f32>("temp_map_2d", &["lat", "lon"])?;
+    temp_map_var.put_attribute("units", "celsius")?;
+    temp_map_var.put_values(&temp_data_2d, &[.., ..])?;
+
+    // 2. time_profile_1d (time) - 1D, not suitable for image
+    let time_profile_data: Vec<f32> = (0..3).map(|i| i as f32 * 10.0).collect();
+    let mut time_profile_var = file.add_variable::<f32>("time_profile_1d", &["time"])?;
+    time_profile_var.put_attribute("units", "arbitrary_units")?;
+    time_profile_var.put_values(&time_profile_data, &[..])?;
+
+    // 3. level_data_2d (level, value_idx) - 2D, but not lat/lon spatial, not suitable for image
+    let level_vals_data: Vec<f32> = (0..(4 * 2)).map(|i| i as f32 * 5.0).collect();
+    let mut level_data_var = file.add_variable::<f32>("level_data_2d", &["level", "value_idx"])?;
+    level_data_var.put_attribute("units", "value_units")?;
+    level_data_var.put_values(&level_vals_data, &[.., ..])?;
+
+    // 4. pressure_map_2d (lat, lon) - Another valid 2D for multi-var point tests
+    let pressure_data_2d: Vec<f32> = (0..(5 * 10)).map(|i| 1000.0 + i as f32).collect();
+    let mut pressure_map_var = file.add_variable::<f32>("pressure_map_2d", &["lat", "lon"])?;
+    pressure_map_var.put_attribute("units", "hPa")?;
+    pressure_map_var.put_values(&pressure_data_2d, &[.., ..])?;
+
+    // 5. temp_3d_var (time, lat, lon) - A 3D var, also valid for image (will be sliced by time_index)
+    let temp_data_3d: Vec<f32> = (0..(3 * 5 * 10)).map(|i| i as f32 * 0.5).collect();
+    let mut temp_3d_var = file.add_variable::<f32>("temp_3d_var", &["time", "lat", "lon"])?;
+    temp_3d_var.put_attribute("units", "kelvin")?;
+    temp_3d_var.put_values(&temp_data_3d, &[.., .., ..])?;
+
+
+    Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use tempfile::tempdir;
+
+    #[test]
+    fn test_create_linear_gradient_nc() {
+        let dir = tempdir().unwrap();
+        let file_path = dir.path().join("linear_gradient.nc");
+
+        let result = create_linear_gradient_nc(&file_path, (10, 10));
+        if let Err(e) = &result {
+            println!("Error creating linear gradient NC file: {:?}", e);
+        }
+        assert!(result.is_ok());
+        assert!(file_path.exists());
+
+        // Verify we can open and read the file
+        let nc_file = netcdf::open(&file_path).unwrap();
+        assert!(nc_file.variable("gradient").is_some());
+        assert_eq!(nc_file.dimension("lon").unwrap().len(), 10);
+        assert_eq!(nc_file.dimension("lat").unwrap().len(), 10);
+    }
+
+    #[test]
+    fn test_create_sinusoidal_nc() {
+        let dir = tempdir().unwrap();
+        let file_path = dir.path().join("sinusoidal.nc");
+
+        assert!(create_sinusoidal_nc(&file_path, (10, 10)).is_ok());
+        assert!(file_path.exists());
+
+        // Verify we can open and read the file
+        let nc_file = netcdf::open(&file_path).unwrap();
+        assert!(nc_file.variable("wave").is_some());
+        assert_eq!(nc_file.dimension("lon").unwrap().len(), 10);
+        assert_eq!(nc_file.dimension("lat").unwrap().len(), 10);
+    }
+
+    #[test]
+    fn test_create_gaussian_blob_nc() {
+        let dir = tempdir().unwrap();
+        let file_path = dir.path().join("gaussian_blob.nc");
+
+        assert!(create_gaussian_blob_nc(&file_path, (10, 10)).is_ok());
+        assert!(file_path.exists());
+
+        // Verify we can open and read the file
+        let nc_file = netcdf::open(&file_path).unwrap();
+        assert!(nc_file.variable("blob").is_some());
+        assert_eq!(nc_file.dimension("lon").unwrap().len(), 10);
+        assert_eq!(nc_file.dimension("lat").unwrap().len(), 10);
+    }
+
+    #[test]
+    fn test_create_test_weather_nc() {
+        let dir = tempdir().unwrap();
+        let file_path = dir.path().join("weather_test.nc");
+
+        assert!(create_test_weather_nc(&file_path).is_ok());
+        assert!(file_path.exists());
+
+        // Verify we can open and read the file
+        let nc_file = netcdf::open(&file_path).unwrap();
+        assert!(nc_file.variable("temperature").is_some());
+        assert!(nc_file.variable("u_wind").is_some());
+        assert!(nc_file.variable("v_wind").is_some());
+        assert!(nc_file.variable("pressure").is_some());
+        assert!(nc_file.variable("precipitation").is_some());
+    }
+
+    #[test]
+    fn test_create_varied_content_nc() {
+        let dir = tempdir().unwrap();
+        let file_path = dir.path().join("varied_content.nc");
+
+        assert!(create_varied_content_nc(&file_path).is_ok());
+        assert!(file_path.exists());
+
+        let nc_file = netcdf::open(&file_path).unwrap();
+        assert!(nc_file.variable("temp_map_2d").is_some());
+        assert_eq!(nc_file.variable("temp_map_2d").unwrap().dimensions().len(), 2);
+
+        assert!(nc_file.variable("time_profile_1d").is_some());
+        assert_eq!(nc_file.variable("time_profile_1d").unwrap().dimensions().len(), 1);
+
+        assert!(nc_file.variable("level_data_2d").is_some());
+        assert_eq!(nc_file.variable("level_data_2d").unwrap().dimensions().len(), 2);
+        assert_eq!(nc_file.variable("level_data_2d").unwrap().dimensions()[0].name(), "level");
+        assert_eq!(nc_file.variable("level_data_2d").unwrap().dimensions()[1].name(), "value_idx");
+
+
+        assert!(nc_file.variable("pressure_map_2d").is_some());
+        assert_eq!(nc_file.variable("pressure_map_2d").unwrap().dimensions().len(), 2);
+
+        assert!(nc_file.variable("temp_3d_var").is_some());
+        assert_eq!(nc_file.variable("temp_3d_var").unwrap().dimensions().len(), 3);
+
+        assert!(nc_file.dimension("lon").is_some());
+        assert!(nc_file.dimension("lat").is_some());
+        assert!(nc_file.dimension("time").is_some());
+        assert!(nc_file.dimension("level").is_some());
+        assert!(nc_file.dimension("value_idx").is_some());
+    }
+}

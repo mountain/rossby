@@ -43,6 +43,13 @@ pub async fn point_handler(
 ) -> Response {
     match process_point_query(state, params) {
         Ok(response) => Json(response).into_response(),
+        Err(RossbyError::InvalidVariables { names }) => (
+            StatusCode::BAD_REQUEST,
+            Json(serde_json::json!({
+                "error": format!("Invalid variable(s): [{}]", names.join(", "))
+            })),
+        )
+            .into_response(),
         Err(error) => (
             StatusCode::BAD_REQUEST,
             Json(serde_json::json!({
@@ -93,16 +100,25 @@ fn process_point_query(
     let interpolation_method = params.interpolation.as_deref().unwrap_or("bilinear");
     let interpolator = crate::interpolation::get_interpolator(interpolation_method)?;
 
+    // Check for invalid variables
+    let mut invalid_variables = Vec::new();
+    for var_name_str in &variables {
+        if !state.has_variable(var_name_str) {
+            invalid_variables.push(var_name_str.clone());
+        }
+    }
+
+    if !invalid_variables.is_empty() {
+        return Err(RossbyError::InvalidVariables {
+            names: invalid_variables,
+        });
+    }
+
     // Results map
     let mut values = serde_json::Map::new();
 
     // Process each variable
     for var_name in variables {
-        // Check if variable exists
-        if !state.has_variable(&var_name) {
-            return Err(RossbyError::VariableNotFound { name: var_name });
-        }
-
         // Get variable dimensions
         let dimensions = state.get_variable_dimensions(&var_name)?;
 
@@ -321,10 +337,10 @@ mod tests {
         let result = process_point_query(state.clone(), params);
         assert!(result.is_err());
 
-        if let Err(RossbyError::VariableNotFound { name }) = result {
-            assert_eq!(name, "humidity");
+        if let Err(RossbyError::InvalidVariables { names }) = result {
+            assert_eq!(names, vec!["humidity"]);
         } else {
-            panic!("Expected VariableNotFound error");
+            panic!("Expected InvalidVariables error");
         }
     }
 
