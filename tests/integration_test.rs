@@ -12,16 +12,13 @@ use std::sync::Once;
 use once_cell::sync::OnceCell;
 
 static INIT: Once = Once::new();
-static TEST_PORT: u16 = 9876;
+static TEST_ADDR: OnceCell<SocketAddr> = OnceCell::new();
 static TEST_TEMP_DIR: OnceCell<tempfile::TempDir> = OnceCell::new();
 static TEST_FILE_PATH: OnceCell<String> = OnceCell::new();
 
-/// Start a test server on a dedicated port
+/// Start a test server on a specified port
 async fn start_test_server() -> SocketAddr {
-    // Bind to a specific port for testing
-    let addr = ([127, 0, 0, 1], TEST_PORT).into();
-
-    // Create test data once
+    // Initialize test data and get temp directory
     let _temp_dir = TEST_TEMP_DIR.get_or_init(|| {
         let dir = tempfile::tempdir().unwrap();
         let file_path = dir.path().join("test_weather.nc");
@@ -35,14 +32,27 @@ async fn start_test_server() -> SocketAddr {
         dir
     });
 
-    // Start the server in a background task
+    // Use port 0 to let the OS assign an available port
+    let addr = SocketAddr::from((std::net::Ipv4Addr::new(127, 0, 0, 1), 0));
+
+    // Start by creating a listener to get the OS-assigned port
+    let listener = tokio::net::TcpListener::bind(addr)
+        .await
+        .expect("Failed to bind to port");
+
+    // Get the actual bound address with the OS-assigned port
+    let bound_addr = listener.local_addr().expect("Failed to get local address");
+
+    // Get the test file path
     let file_path = TEST_FILE_PATH.get().expect("Test file path not set");
-    let _server_task = tokio::spawn(async move {
+
+    // Start the server
+    tokio::spawn(async move {
         // Create a minimal config
         let config = rossby::Config {
             server: rossby::config::ServerConfig {
                 host: "127.0.0.1".to_string(),
-                port: TEST_PORT,
+                port: bound_addr.port(),
                 workers: Some(1),
             },
             ..Default::default()
@@ -72,30 +82,59 @@ async fn start_test_server() -> SocketAddr {
             .layer(tower_http::cors::CorsLayer::permissive())
             .with_state(state);
 
-        // Start the server
-        let listener = tokio::net::TcpListener::bind(addr)
-            .await
-            .expect("Failed to bind to test port");
-
-        println!("Test server started on {}", addr);
+        println!("Test server started on {}", bound_addr);
 
         axum::serve(listener, app).await.expect("Server error");
     });
 
-    // Give the server a moment to start
-    tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+    // The server will take some time to start up fully
+    println!("Test server starting on {}", bound_addr);
 
-    println!("Test server ready on {}", addr);
-
-    addr
+    bound_addr
 }
 
 /// Initialize the test environment once
 async fn init_test_environment() -> SocketAddr {
-    let addr = start_test_server().await;
-    INIT.call_once(|| {
-        println!("Test environment initialized with server at {}", addr);
-    });
+    // Use the cached address if available
+    let addr = match TEST_ADDR.get() {
+        Some(addr) => *addr,
+        None => {
+            // Start the server only once
+            let new_addr = start_test_server().await;
+            match TEST_ADDR.set(new_addr) {
+                Ok(_) => {
+                    // We set it, so initialize
+                    INIT.call_once(|| {
+                        println!("Test environment initialized with server at {}", new_addr);
+                    });
+                    new_addr
+                }
+                Err(_) => {
+                    // Another thread set it first
+                    *TEST_ADDR.get().unwrap()
+                }
+            }
+        }
+    };
+
+    // Wait for the server to be ready
+    let mut retries = 5;
+    while retries > 0 {
+        match reqwest::Client::new()
+            .get(&format!("http://{}/metadata", addr))
+            .timeout(std::time::Duration::from_millis(500))
+            .send()
+            .await
+        {
+            Ok(_) => break, // Server is ready
+            Err(_) => {
+                // Wait and retry
+                tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+                retries -= 1;
+            }
+        }
+    }
+
     addr
 }
 
@@ -104,9 +143,8 @@ async fn test_server_startup() {
     // Ensure server is running
     let addr = init_test_environment().await;
 
-    // Test will be more substantive in Phase 7
-    // For now, we just verify the port is as expected
-    assert_eq!(addr.port(), TEST_PORT);
+    // Just verify we have a valid port (non-zero)
+    assert!(addr.port() > 0);
 }
 
 #[tokio::test]
@@ -142,6 +180,8 @@ async fn test_metadata_endpoint() {
 async fn test_point_endpoint() {
     // Initialize test environment
     let addr = init_test_environment().await;
+
+    println!("Using server address for point endpoint test: {}", addr);
 
     // Test nearest neighbor interpolation (using coordinates within our test data bounds)
     let response = http_client::get(

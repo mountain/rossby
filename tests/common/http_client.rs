@@ -30,6 +30,7 @@ pub fn build_url(addr: &SocketAddr, path: &str) -> Url {
 pub async fn get(addr: &SocketAddr, path: &str) -> Result<Response, Box<dyn Error>> {
     let client = create_test_client();
     let url = build_url(addr, path);
+    println!("Making request to: {}", url);
     Ok(client.get(url).send().await?)
 }
 

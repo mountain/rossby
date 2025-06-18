@@ -226,7 +226,7 @@ graph TB
 
 ### Phase 8: Better geography features (Days 15-16)
 
-**Goal**: Improving the /image endpoint with Geography features
+**Goal**: Improving the /image endpoint with better geography features
 - BBox support for different global settings (Eurocentric, America-centered, Pacific-Ocean, or any customized setting): northern polar is at the above and southern polar is at bottom
 - BBox support for area spanning the equators or prime meridian
 - Upsample or downsample by data grid interpolation

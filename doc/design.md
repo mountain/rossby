@@ -80,12 +80,19 @@ A static NetCDF file on disk is the single source of truth, loaded into the proc
             d. Performs a **bilinear interpolation** using the fractional parts of the grid indices as weights.
         4. Serializes the results into a JSON object.
     - **`GET /image`**:
-        1. Receives `var`, `time_index`, `bbox`, etc.
-        2. Slices the `ndarray` to get a 2D data array corresponding to the `bbox`.
-        3. Determines the data range (`min`, `max`) for color mapping.
-        4. Creates a buffer using the `image` crate.
-        5. Iterates through the 2D data slice, maps each value to a color using a colormap function (e.g., from the `colorgrad` crate), and writes the corresponding pixel to the image buffer.
-        6. Encodes the buffer as a PNG or JPEG and returns the binary data with the correct `Content-Type` header.
+        1. Receives `var`, `time_index`, `bbox`, `center`, `wrap_longitude`, `resampling`, etc. as query parameters.
+        2. Normalizes the bounding box coordinates based on the selected map centering:
+           - Eurocentric view (-180° to 180°)
+           - Americas-centered view (-90° to 270°)
+           - Pacific-centered view (0° to 360°)
+           - Custom center (specified longitude as center)
+        3. Handles bounding boxes that cross the International Date Line or Prime Meridian when `wrap_longitude=true`.
+        4. Slices the `ndarray` to get a 2D data array corresponding to the normalized `bbox`.
+        5. Determines the data range (`min`, `max`) for color mapping.
+        6. Creates a buffer using the `image` crate.
+        7. Applies the selected resampling method (`nearest`, `bilinear`, `bicubic`, or `auto`) for data grid interpolation.
+        8. Maps each interpolated value to a color using a colormap function.
+        9. Encodes the buffer as a PNG or JPEG and returns the binary data with the correct `Content-Type` header.
 
 ## 5. Data Flow Walkthroughs
 
@@ -114,7 +121,8 @@ A static NetCDF file on disk is the single source of truth, loaded into the proc
 ## 6. Future Work
 
 - **Support for more file formats:** Add readers for GRIB2, Zarr, and TileDB to broaden the tool's applicability.
-- **More interpolation methods:** Implement `nearest neighbor` and `cubic` interpolation as configurable options.
+- **Advanced geographic features:** Implement map projections beyond simple longitude/latitude transformations.
 - **Pluggable colormaps:** Allow users to define custom colormaps for the image endpoint.
 - **Authentication:** Add an optional API key authentication layer.
 - **Caching:** For extremely large files that don't fit in RAM, implement an LRU caching mechanism for frequently accessed data chunks, moving from a pure in-memory to a hybrid model.
+- **Enhanced visualization options:** Add support for contour lines, vector overlays, and labeled features.
