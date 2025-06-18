@@ -23,7 +23,6 @@ impl Interpolator for BilinearInterpolator {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
 
     #[test]
     fn test_bilinear_interpolation() {

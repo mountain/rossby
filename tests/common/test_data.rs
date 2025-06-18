@@ -3,8 +3,8 @@
 //! This module provides functions to generate various NetCDF test files
 //! with known data patterns for testing the rossby server.
 
-use std::path::Path;
 use std::io::Result;
+use std::path::Path;
 
 /// Creates a NetCDF file with a simple linear gradient pattern.
 ///
@@ -19,10 +19,10 @@ use std::io::Result;
 pub fn create_linear_gradient_nc(path: &Path, _size: (usize, usize)) -> Result<()> {
     // TODO: Implement actual NetCDF file creation in Phase 4
     // This is a placeholder that will be implemented when the netcdf dependency is restored
-    
+
     // For now, just create an empty file to simulate the test data
     std::fs::write(path, b"PLACEHOLDER_LINEAR_GRADIENT")?;
-    
+
     Ok(())
 }
 
@@ -39,10 +39,10 @@ pub fn create_linear_gradient_nc(path: &Path, _size: (usize, usize)) -> Result<(
 pub fn create_sinusoidal_nc(path: &Path, _size: (usize, usize)) -> Result<()> {
     // TODO: Implement actual NetCDF file creation in Phase 4
     // This is a placeholder that will be implemented when the netcdf dependency is restored
-    
+
     // For now, just create an empty file to simulate the test data
     std::fs::write(path, b"PLACEHOLDER_SINUSOIDAL")?;
-    
+
     Ok(())
 }
 
@@ -59,10 +59,10 @@ pub fn create_sinusoidal_nc(path: &Path, _size: (usize, usize)) -> Result<()> {
 pub fn create_gaussian_blob_nc(path: &Path, _size: (usize, usize)) -> Result<()> {
     // TODO: Implement actual NetCDF file creation in Phase 4
     // This is a placeholder that will be implemented when the netcdf dependency is restored
-    
+
     // For now, just create an empty file to simulate the test data
     std::fs::write(path, b"PLACEHOLDER_GAUSSIAN_BLOB")?;
-    
+
     Ok(())
 }
 
@@ -81,10 +81,10 @@ pub fn create_gaussian_blob_nc(path: &Path, _size: (usize, usize)) -> Result<()>
 pub fn create_test_weather_nc(path: &Path) -> Result<()> {
     // TODO: Implement actual NetCDF file creation in Phase 4
     // This is a placeholder that will be implemented when the netcdf dependency is restored
-    
+
     // For now, just create an empty file to simulate the test data
     std::fs::write(path, b"PLACEHOLDER_WEATHER_DATA")?;
-    
+
     Ok(())
 }
 
@@ -97,7 +97,7 @@ mod tests {
     fn test_create_linear_gradient_nc() {
         let dir = tempdir().unwrap();
         let file_path = dir.path().join("linear_gradient.nc");
-        
+
         assert!(create_linear_gradient_nc(&file_path, (10, 10)).is_ok());
         assert!(file_path.exists());
     }
@@ -106,7 +106,7 @@ mod tests {
     fn test_create_sinusoidal_nc() {
         let dir = tempdir().unwrap();
         let file_path = dir.path().join("sinusoidal.nc");
-        
+
         assert!(create_sinusoidal_nc(&file_path, (10, 10)).is_ok());
         assert!(file_path.exists());
     }
@@ -115,7 +115,7 @@ mod tests {
     fn test_create_gaussian_blob_nc() {
         let dir = tempdir().unwrap();
         let file_path = dir.path().join("gaussian_blob.nc");
-        
+
         assert!(create_gaussian_blob_nc(&file_path, (10, 10)).is_ok());
         assert!(file_path.exists());
     }
@@ -124,7 +124,7 @@ mod tests {
     fn test_create_test_weather_nc() {
         let dir = tempdir().unwrap();
         let file_path = dir.path().join("weather_test.nc");
-        
+
         assert!(create_test_weather_nc(&file_path).is_ok());
         assert!(file_path.exists());
     }

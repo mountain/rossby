@@ -59,7 +59,6 @@ pub async fn image_handler(
 
 #[cfg(test)]
 mod tests {
-    use super::*;
 
     #[test]
     fn test_image_query_parsing() {

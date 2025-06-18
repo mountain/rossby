@@ -23,7 +23,6 @@ impl Interpolator for BicubicInterpolator {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
 
     #[test]
     fn test_bicubic_interpolation() {

@@ -22,7 +22,6 @@ impl Interpolator for NearestInterpolator {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
 
     #[test]
     fn test_nearest_interpolation() {

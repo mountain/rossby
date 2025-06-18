@@ -61,7 +61,6 @@ pub async fn point_handler(
 
 #[cfg(test)]
 mod tests {
-    use super::*;
 
     #[test]
     fn test_point_query_parsing() {

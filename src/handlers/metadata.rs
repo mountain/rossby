@@ -20,7 +20,6 @@ pub async fn metadata_handler(State(state): State<Arc<AppState>>) -> Json<serde_
 
 #[cfg(test)]
 mod tests {
-    use super::*;
 
     #[test]
     fn test_placeholder() {
