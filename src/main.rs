@@ -4,9 +4,8 @@
 
 use axum::{routing::get, Router};
 use std::net::SocketAddr;
-use std::sync::Arc;
 use tower_http::cors::CorsLayer;
-use tracing::{error, info};
+use tracing::info;
 
 use rossby::data_loader::load_netcdf;
 use rossby::handlers::{image_handler, metadata_handler, point_handler};
