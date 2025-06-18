@@ -84,6 +84,12 @@ mod tests {
 ### 3.4. Version Control (Git) Protocol
 
 - **Branching**: All work must be done on a feature branch created from the `main` branch. Do not commit directly to `main`.
+- **Pre-Commit Verification**: Before committing any changes, you **MUST** ensure that all checks pass locally:
+    - Formatting: `cargo fmt --check`
+    - Linting: `cargo clippy -- -D warnings`
+    - Testing: `cargo test`
+    - Documentation: `cargo doc --no-deps`
+    - Code that does not pass ALL these checks is not ready for commit.
 - **Commit Messages**: Commits **MUST** follow the [Conventional Commits](https://www.conventionalcommits.org/) specification.
     - `feat: Add /metadata endpoint`
     - `fix: Correctly handle longitude wrapping in interpolation`
