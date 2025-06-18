@@ -10,7 +10,7 @@ use crate::error::Result;
 pub struct BicubicInterpolator;
 
 impl Interpolator for BicubicInterpolator {
-    fn interpolate(&self, data: &[f32], shape: &[usize], indices: &[f64]) -> Result<f32> {
+    fn interpolate(&self, _data: &[f32], _shape: &[usize], _indices: &[f64]) -> Result<f32> {
         // TODO: Implement bicubic interpolation
         // This is a placeholder that will be implemented in Phase 5
         Ok(0.0)

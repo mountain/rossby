@@ -2,10 +2,10 @@
 //!
 //! This module provides shared functionality used by various interpolation methods.
 
-use crate::error::{Result, RossbyError};
+use crate::error::Result;
 
 /// Map a coordinate value to a fractional grid index
-pub fn coord_to_index(coord: f64, coord_values: &[f64]) -> Result<f64> {
+pub fn coord_to_index(_coord: f64, _coord_values: &[f64]) -> Result<f64> {
     // TODO: Implement coordinate to index mapping
     // This is a placeholder that will be implemented in Phase 5
     Ok(0.0)

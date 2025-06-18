@@ -38,8 +38,8 @@ pub struct PointResponse {
 
 /// Handle GET /point requests
 pub async fn point_handler(
-    State(state): State<Arc<AppState>>,
-    Query(params): Query<PointQuery>,
+    State(_state): State<Arc<AppState>>,
+    Query(_params): Query<PointQuery>,
 ) -> Response {
     // TODO: Implement point query with interpolation
     // This is a placeholder that will be implemented in Phase 5

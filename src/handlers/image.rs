@@ -4,7 +4,7 @@
 
 use axum::{
     extract::{Query, State},
-    http::{header, StatusCode},
+    http::StatusCode,
     response::{IntoResponse, Response},
     Json,
 };
@@ -37,8 +37,8 @@ pub struct ImageQuery {
 
 /// Handle GET /image requests
 pub async fn image_handler(
-    State(state): State<Arc<AppState>>,
-    Query(params): Query<ImageQuery>,
+    State(_state): State<Arc<AppState>>,
+    Query(_params): Query<ImageQuery>,
 ) -> Response {
     // TODO: Implement image generation
     // This is a placeholder that will be implemented in Phase 6

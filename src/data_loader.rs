@@ -7,10 +7,13 @@ use std::collections::HashMap;
 use std::path::Path;
 
 use crate::error::{Result, RossbyError};
-use crate::state::{AttributeValue, Dimension, Metadata, Variable};
+use crate::state::Metadata;
+
+/// Type alias for the NetCDF loading result to simplify the complex return type
+pub type LoadResult = Result<(Metadata, HashMap<String, Array<f32, IxDyn>>)>;
 
 /// Load a NetCDF file into memory
-pub fn load_netcdf(path: &Path) -> Result<(Metadata, HashMap<String, Array<f32, IxDyn>>)> {
+pub fn load_netcdf(path: &Path) -> LoadResult {
     // TODO: Implement NetCDF loading
     // This is a placeholder that will be implemented in Phase 4
 

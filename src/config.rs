@@ -10,7 +10,7 @@ use clap::Parser;
 use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
 
-use crate::error::{Result, RossbyError};
+use crate::error::Result;
 
 /// Command-line arguments for rossby
 #[derive(Parser, Debug)]
