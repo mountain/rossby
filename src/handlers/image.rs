@@ -243,6 +243,9 @@ fn generate_image(
     for y in 0..height {
         for x in 0..width {
             // Map image coordinates to data coordinates (fractional indices)
+            // Map directly with correct orientation:
+            // - x coordinate is mapped from left to right (standard NetCDF longitude order)
+            // - y coordinate is mapped from top to bottom (standard NetCDF latitude order with north at top)
             let data_x = x as f64 * (data_width - 1) as f64 / (width - 1) as f64;
             let data_y = y as f64 * (data_height - 1) as f64 / (height - 1) as f64;
 
@@ -488,5 +491,47 @@ mod tests {
         assert_eq!(min_lat, 20.0);
         assert_eq!(max_lon, -160.0); // 200 normalized to eurocentric
         assert_eq!(max_lat, 40.0);
+    }
+    
+    #[test]
+    fn test_image_orientation() {
+        // Create a simple test data array with a distinct pattern
+        // This data represents a 3x3 grid with values increasing from top-left to bottom-right
+        // When properly oriented in the image:
+        // - North should be at the top of the image (higher latitude)
+        // - East should be at the right of the image (higher longitude)
+        let data = ndarray::array![
+            [1.0, 2.0, 3.0],  // Top row (north)
+            [4.0, 5.0, 6.0],  // Middle row
+            [7.0, 8.0, 9.0]   // Bottom row (south)
+        ];
+        
+        // Generate a 3x3 image with this data
+        let colormap = colormaps::get_colormap("viridis").unwrap();
+        let img = generate_image(data.view(), 3, 3, colormap.as_ref(), "nearest").unwrap();
+        
+        // Get the pixel values to check orientation
+        let top_left = img.get_pixel(0, 0);
+        let top_right = img.get_pixel(2, 0);
+        let bottom_left = img.get_pixel(0, 2);
+        let bottom_right = img.get_pixel(2, 2);
+        
+        // Convert the RGBA values to intensity (just for comparison purposes)
+        let intensity = |pixel: &image::Rgba<u8>| -> u32 {
+            let rgba = pixel.0;
+            rgba[0] as u32 + rgba[1] as u32 + rgba[2] as u32
+        };
+        
+        // Check that the image has the correct orientation:
+        // - Top row (north) should be mapped to top row of image
+        // - Bottom row (south) should be mapped to bottom row of image
+        // - Left values (west) should be mapped to left of image
+        // - Right values (east) should be mapped to right of image
+        
+        // The intensity of pixels should increase from top-left to bottom-right
+        assert!(intensity(&top_left) < intensity(&top_right));
+        assert!(intensity(&top_left) < intensity(&bottom_left));
+        assert!(intensity(&bottom_left) < intensity(&bottom_right));
+        assert!(intensity(&top_right) < intensity(&bottom_right));
     }
 }

@@ -108,7 +108,7 @@ async fn init_test_environment() -> SocketAddr {
                         println!("Test environment initialized with server at {}", new_addr);
                     });
                     new_addr
-                }
+                },
                 Err(_) => {
                     // Another thread set it first
                     *TEST_ADDR.get().unwrap()
@@ -116,25 +116,35 @@ async fn init_test_environment() -> SocketAddr {
             }
         }
     };
-
+    
     // Wait for the server to be ready
-    let mut retries = 5;
+    let mut retries = 10;
     while retries > 0 {
+        // Make sure we're using the correct address that the server is listening on
+        println!("Checking if server is ready at {}", addr);
         match reqwest::Client::new()
-            .get(&format!("http://{}/metadata", addr))
+            .get(format!("http://{}/metadata", addr))
             .timeout(std::time::Duration::from_millis(500))
             .send()
             .await
         {
-            Ok(_) => break, // Server is ready
-            Err(_) => {
+            Ok(_) => {
+                println!("Server is ready at {}", addr);
+                break; // Server is ready
+            },
+            Err(e) => {
                 // Wait and retry
-                tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+                println!("Server not ready, retrying... ({} retries left): {}", retries, e);
+                tokio::time::sleep(std::time::Duration::from_millis(200)).await;
                 retries -= 1;
             }
         }
     }
-
+    
+    if retries == 0 {
+        panic!("Server did not become ready in time at {}", addr);
+    }
+    
     addr
 }
 
