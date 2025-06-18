@@ -8,13 +8,13 @@ use thiserror::Error;
 /// The main error type for rossby operations.
 #[derive(Error, Debug)]
 pub enum RossbyError {
-/// NetCDF file operation errors
-#[error("NetCDF error: {message}")]
-NetCdf { message: String },
+    /// NetCDF file operation errors
+    #[error("NetCDF error: {message}")]
+    NetCdf { message: String },
 
-/// Conversion errors
-#[error("Conversion error: {message}")]
-Conversion { message: String },
+    /// Conversion errors
+    #[error("Conversion error: {message}")]
+    Conversion { message: String },
 
     /// IO errors
     #[error("IO error: {0}")]
@@ -65,19 +65,25 @@ impl From<String> for RossbyError {
 
 impl From<&str> for RossbyError {
     fn from(message: &str) -> Self {
-        RossbyError::Server { message: message.to_string() }
+        RossbyError::Server {
+            message: message.to_string(),
+        }
     }
 }
 
 impl From<std::num::ParseIntError> for RossbyError {
     fn from(err: std::num::ParseIntError) -> Self {
-        RossbyError::Conversion { message: err.to_string() }
+        RossbyError::Conversion {
+            message: err.to_string(),
+        }
     }
 }
 
 impl From<std::num::ParseFloatError> for RossbyError {
     fn from(err: std::num::ParseFloatError) -> Self {
-        RossbyError::Conversion { message: err.to_string() }
+        RossbyError::Conversion {
+            message: err.to_string(),
+        }
     }
 }
 

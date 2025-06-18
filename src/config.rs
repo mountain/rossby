@@ -130,46 +130,49 @@ impl Config {
         self.data = other.data;
         self.log_level = other.log_level;
     }
-    
+
     /// Validate the configuration
     pub fn validate(&self) -> Result<()> {
         // Validate server host (must be a valid IP or hostname)
         if self.server.host.is_empty() {
-            return Err(RossbyError::Config { 
-                message: "Server host cannot be empty".to_string() 
+            return Err(RossbyError::Config {
+                message: "Server host cannot be empty".to_string(),
             });
         }
-        
+
         // Validate port (0 is not a valid port for users)
         if self.server.port == 0 {
-            return Err(RossbyError::Config { 
-                message: "Server port cannot be 0".to_string() 
+            return Err(RossbyError::Config {
+                message: "Server port cannot be 0".to_string(),
             });
         }
-        
+
         // Validate log level
         match self.log_level.as_str() {
             "trace" | "debug" | "info" | "warn" | "error" => {}
             _ => {
-                return Err(RossbyError::Config { 
-                    message: format!("Invalid log level: {}. Must be one of: trace, debug, info, warn, error", self.log_level) 
+                return Err(RossbyError::Config {
+                    message: format!(
+                        "Invalid log level: {}. Must be one of: trace, debug, info, warn, error",
+                        self.log_level
+                    ),
                 });
             }
         }
-        
+
         // Validate interpolation method
         match self.data.interpolation_method.as_str() {
             "nearest" | "bilinear" | "bicubic" => {}
             _ => {
-                return Err(RossbyError::Config { 
+                return Err(RossbyError::Config {
                     message: format!(
-                        "Invalid interpolation method: {}. Must be one of: nearest, bilinear, bicubic", 
+                        "Invalid interpolation method: {}. Must be one of: nearest, bilinear, bicubic",
                         self.data.interpolation_method
-                    ) 
+                    )
                 });
             }
         }
-        
+
         Ok(())
     }
 }
@@ -246,28 +249,28 @@ mod tests {
         assert_eq!(config1.server.port, 9000);
         assert_eq!(config1.server.workers, Some(4));
     }
-    
+
     #[test]
     fn test_config_validation() {
         // Valid config should pass
         let config = Config::default();
         assert!(config.validate().is_ok());
-        
+
         // Test invalid host
         let mut config = Config::default();
         config.server.host = "".to_string();
         assert!(config.validate().is_err());
-        
+
         // Test invalid port
         let mut config = Config::default();
         config.server.port = 0;
         assert!(config.validate().is_err());
-        
+
         // Test invalid log level
         let mut config = Config::default();
         config.log_level = "invalid".to_string();
         assert!(config.validate().is_err());
-        
+
         // Test invalid interpolation method
         let mut config = Config::default();
         config.data.interpolation_method = "invalid".to_string();

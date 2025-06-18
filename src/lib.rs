@@ -29,4 +29,4 @@ pub mod state;
 
 pub use config::Config;
 pub use error::{Result, RossbyError};
-pub use state::{AppState, Metadata, Variable, Dimension, AttributeValue};
+pub use state::{AppState, AttributeValue, Dimension, Metadata, Variable};
