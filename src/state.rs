@@ -199,50 +199,58 @@ impl AppState {
             1 // Default to 1 if no time dimension
         }
     }
-    
+
     /// Get the global lat/lon boundaries of the data
     pub fn get_lat_lon_bounds(&self) -> Result<(f32, f32, f32, f32)> {
         // Get lat and lon coordinate arrays
         let lon_coords = self.get_coordinate_checked("lon")?;
         let lat_coords = self.get_coordinate_checked("lat")?;
-        
+
         if lon_coords.is_empty() || lat_coords.is_empty() {
             return Err(RossbyError::DataNotFound {
                 message: "Latitude or longitude coordinates are empty".to_string(),
             });
         }
-        
+
         // Find min/max values using iterators
-        let min_lon = lon_coords.iter().fold(f64::INFINITY, |min, &val| min.min(val)) as f32;
-        let max_lon = lon_coords.iter().fold(f64::NEG_INFINITY, |max, &val| max.max(val)) as f32;
-        let min_lat = lat_coords.iter().fold(f64::INFINITY, |min, &val| min.min(val)) as f32;
-        let max_lat = lat_coords.iter().fold(f64::NEG_INFINITY, |max, &val| max.max(val)) as f32;
-        
+        let min_lon = lon_coords
+            .iter()
+            .fold(f64::INFINITY, |min, &val| min.min(val)) as f32;
+        let max_lon = lon_coords
+            .iter()
+            .fold(f64::NEG_INFINITY, |max, &val| max.max(val)) as f32;
+        let min_lat = lat_coords
+            .iter()
+            .fold(f64::INFINITY, |min, &val| min.min(val)) as f32;
+        let max_lat = lat_coords
+            .iter()
+            .fold(f64::NEG_INFINITY, |max, &val| max.max(val)) as f32;
+
         Ok((min_lon, min_lat, max_lon, max_lat))
     }
-    
+
     /// Extract a 2D data slice for a variable at a given time and spatial bounds
     pub fn get_data_slice(
-        &self, 
-        var_name: &str, 
+        &self,
+        var_name: &str,
         time_index: usize,
-        min_lon: f32, 
-        min_lat: f32, 
-        max_lon: f32, 
-        max_lat: f32
+        min_lon: f32,
+        min_lat: f32,
+        max_lon: f32,
+        max_lat: f32,
     ) -> Result<Array<f32, ndarray::Ix2>> {
         // Get the variable data
         let var_data = self.get_variable_checked(var_name)?;
-        
+
         // Get the variable dimensions
         let var_meta = self.get_variable_metadata_checked(var_name)?;
         let dimensions = &var_meta.dimensions;
-        
+
         // Find the indices for lat, lon, and time in the dimensions
         let mut time_dim_idx = None;
         let mut lat_dim_idx = None;
         let mut lon_dim_idx = None;
-        
+
         for (i, dim) in dimensions.iter().enumerate() {
             if dim == "time" {
                 time_dim_idx = Some(i);
@@ -252,33 +260,41 @@ impl AppState {
                 lon_dim_idx = Some(i);
             }
         }
-        
+
         // Ensure we have lat and lon dimensions
         let lat_dim_idx = lat_dim_idx.ok_or_else(|| RossbyError::DataNotFound {
             message: format!("Variable {} does not have a lat dimension", var_name),
         })?;
-        
+
         let lon_dim_idx = lon_dim_idx.ok_or_else(|| RossbyError::DataNotFound {
             message: format!("Variable {} does not have a lon dimension", var_name),
         })?;
-        
+
         // Get coordinate arrays
         let lon_coords = self.get_coordinate_checked("lon")?;
         let lat_coords = self.get_coordinate_checked("lat")?;
-        
+
         // Find index ranges for the bounding box
-        let min_lon_idx = lon_coords.iter().position(|&lon| lon as f32 >= min_lon)
+        let min_lon_idx = lon_coords
+            .iter()
+            .position(|&lon| lon as f32 >= min_lon)
             .unwrap_or(0);
-        
-        let max_lon_idx = lon_coords.iter().rposition(|&lon| lon as f32 <= max_lon)
+
+        let max_lon_idx = lon_coords
+            .iter()
+            .rposition(|&lon| lon as f32 <= max_lon)
             .unwrap_or(lon_coords.len() - 1);
-            
-        let min_lat_idx = lat_coords.iter().position(|&lat| lat as f32 >= min_lat)
+
+        let min_lat_idx = lat_coords
+            .iter()
+            .position(|&lat| lat as f32 >= min_lat)
             .unwrap_or(0);
-            
-        let max_lat_idx = lat_coords.iter().rposition(|&lat| lat as f32 <= max_lat)
+
+        let max_lat_idx = lat_coords
+            .iter()
+            .rposition(|&lat| lat as f32 <= max_lat)
             .unwrap_or(lat_coords.len() - 1);
-        
+
         // Create a view into the data array based on the dimensions
         if let Some(time_dim_idx) = time_dim_idx {
             // Variable has a time dimension
@@ -286,46 +302,79 @@ impl AppState {
             if var_data.ndim() == 3 {
                 // Most common case: [time, lat, lon]
                 let slice = if time_dim_idx == 0 && lat_dim_idx == 1 && lon_dim_idx == 2 {
-                    var_data.slice(ndarray::s![time_index, min_lat_idx..=max_lat_idx, min_lon_idx..=max_lon_idx])
+                    var_data.slice(ndarray::s![
+                        time_index,
+                        min_lat_idx..=max_lat_idx,
+                        min_lon_idx..=max_lon_idx
+                    ])
                 } else if time_dim_idx == 0 && lat_dim_idx == 2 && lon_dim_idx == 1 {
-                    var_data.slice(ndarray::s![time_index, min_lon_idx..=max_lon_idx, min_lat_idx..=max_lat_idx])
+                    var_data.slice(ndarray::s![
+                        time_index,
+                        min_lon_idx..=max_lon_idx,
+                        min_lat_idx..=max_lat_idx
+                    ])
                 } else if time_dim_idx == 1 && lat_dim_idx == 0 && lon_dim_idx == 2 {
-                    var_data.slice(ndarray::s![min_lat_idx..=max_lat_idx, time_index, min_lon_idx..=max_lon_idx])
+                    var_data.slice(ndarray::s![
+                        min_lat_idx..=max_lat_idx,
+                        time_index,
+                        min_lon_idx..=max_lon_idx
+                    ])
                 } else if time_dim_idx == 1 && lat_dim_idx == 2 && lon_dim_idx == 0 {
-                    var_data.slice(ndarray::s![min_lon_idx..=max_lon_idx, time_index, min_lat_idx..=max_lat_idx])
+                    var_data.slice(ndarray::s![
+                        min_lon_idx..=max_lon_idx,
+                        time_index,
+                        min_lat_idx..=max_lat_idx
+                    ])
                 } else if time_dim_idx == 2 && lat_dim_idx == 0 && lon_dim_idx == 1 {
-                    var_data.slice(ndarray::s![min_lat_idx..=max_lat_idx, min_lon_idx..=max_lon_idx, time_index])
+                    var_data.slice(ndarray::s![
+                        min_lat_idx..=max_lat_idx,
+                        min_lon_idx..=max_lon_idx,
+                        time_index
+                    ])
                 } else {
-                    var_data.slice(ndarray::s![min_lon_idx..=max_lon_idx, min_lat_idx..=max_lat_idx, time_index])
+                    var_data.slice(ndarray::s![
+                        min_lon_idx..=max_lon_idx,
+                        min_lat_idx..=max_lat_idx,
+                        time_index
+                    ])
                 };
-                
+
                 // Since we extracted a 2D slice from a 3D array, we need to convert the dimensionality
                 Ok(slice.to_owned().into_dimensionality::<ndarray::Ix2>()?)
             } else {
                 // Handle other dimensionality cases
-                return Err(RossbyError::DataNotFound {
+                Err(RossbyError::DataNotFound {
                     message: format!("Unsupported data dimensionality: {}", var_data.ndim()),
-                });
+                })
             }
         } else {
             // Variable doesn't have a time dimension, assume it's already 2D
             if var_data.ndim() == 2 {
                 // Assume [lat, lon] or [lon, lat]
                 let slice = if lat_dim_idx == 0 && lon_dim_idx == 1 {
-                    var_data.slice(ndarray::s![min_lat_idx..=max_lat_idx, min_lon_idx..=max_lon_idx])
+                    var_data.slice(ndarray::s![
+                        min_lat_idx..=max_lat_idx,
+                        min_lon_idx..=max_lon_idx
+                    ])
                 } else {
-                    var_data.slice(ndarray::s![min_lon_idx..=max_lon_idx, min_lat_idx..=max_lat_idx])
+                    var_data.slice(ndarray::s![
+                        min_lon_idx..=max_lon_idx,
+                        min_lat_idx..=max_lat_idx
+                    ])
                 };
-                
+
                 Ok(slice.to_owned())
             } else {
-                return Err(RossbyError::DataNotFound {
-                    message: format!("Expected a 2D array without time dimension, got {}D", var_data.ndim()),
-                });
+                Err(RossbyError::DataNotFound {
+                    message: format!(
+                        "Expected a 2D array without time dimension, got {}D",
+                        var_data.ndim()
+                    ),
+                })
             }
         }
     }
-    
+
     /// Validate that the application state is consistent and ready for use
     pub fn validate(&self) -> Result<()> {
         // Ensure we have at least one variable

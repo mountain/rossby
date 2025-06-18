@@ -12,7 +12,7 @@ impl Colormap for Viridis {
         // Pre-defined Viridis colormap data (RGB triplets)
         // These are sampled from the matplotlib Viridis colormap
         let colors = [
-            [68, 1, 84],     // Dark purple
+            [68, 1, 84], // Dark purple
             [72, 33, 115],
             [64, 67, 135],
             [52, 94, 141],
@@ -22,23 +22,28 @@ impl Colormap for Viridis {
             [68, 190, 112],
             [121, 209, 81],
             [189, 222, 38],
-            [253, 231, 36],  // Yellow
+            [253, 231, 36], // Yellow
         ];
-        
+
         // Calculate the position in our color array
         let position = value * (colors.len() - 1) as f32;
         let index = position.floor() as usize;
-        
+
         // Get the two colors to interpolate between
         if index >= colors.len() - 1 {
             // Last color
-            return [colors[colors.len() - 1][0], colors[colors.len() - 1][1], colors[colors.len() - 1][2], 255];
+            return [
+                colors[colors.len() - 1][0],
+                colors[colors.len() - 1][1],
+                colors[colors.len() - 1][2],
+                255,
+            ];
         }
-        
+
         let t = position - index as f32; // Fractional part for interpolation
         let c1 = colors[index];
         let c2 = colors[index + 1];
-        
+
         // Interpolate between the two colors
         let rgb = super::colormap::lerp_color(c1, c2, t);
         [rgb[0], rgb[1], rgb[2], 255]
@@ -56,7 +61,7 @@ impl Colormap for Plasma {
     fn map_normalized(&self, value: f32) -> [u8; 4] {
         // Pre-defined Plasma colormap data (RGB triplets)
         let colors = [
-            [13, 8, 135],    // Dark blue
+            [13, 8, 135], // Dark blue
             [75, 3, 161],
             [125, 3, 168],
             [168, 13, 155],
@@ -66,23 +71,28 @@ impl Colormap for Plasma {
             [251, 118, 35],
             [246, 157, 8],
             [232, 197, 0],
-            [240, 249, 33],  // Yellow
+            [240, 249, 33], // Yellow
         ];
-        
+
         // Calculate the position in our color array
         let position = value * (colors.len() - 1) as f32;
         let index = position.floor() as usize;
-        
+
         // Get the two colors to interpolate between
         if index >= colors.len() - 1 {
             // Last color
-            return [colors[colors.len() - 1][0], colors[colors.len() - 1][1], colors[colors.len() - 1][2], 255];
+            return [
+                colors[colors.len() - 1][0],
+                colors[colors.len() - 1][1],
+                colors[colors.len() - 1][2],
+                255,
+            ];
         }
-        
+
         let t = position - index as f32; // Fractional part for interpolation
         let c1 = colors[index];
         let c2 = colors[index + 1];
-        
+
         // Interpolate between the two colors
         let rgb = super::colormap::lerp_color(c1, c2, t);
         [rgb[0], rgb[1], rgb[2], 255]
@@ -100,7 +110,7 @@ impl Colormap for Inferno {
     fn map_normalized(&self, value: f32) -> [u8; 4] {
         // Pre-defined Inferno colormap data (RGB triplets)
         let colors = [
-            [0, 0, 4],       // Black
+            [0, 0, 4], // Black
             [22, 11, 57],
             [66, 10, 104],
             [106, 23, 110],
@@ -112,21 +122,26 @@ impl Colormap for Inferno {
             [246, 196, 40],
             [252, 255, 164], // Light yellow
         ];
-        
+
         // Calculate the position in our color array
         let position = value * (colors.len() - 1) as f32;
         let index = position.floor() as usize;
-        
+
         // Get the two colors to interpolate between
         if index >= colors.len() - 1 {
             // Last color
-            return [colors[colors.len() - 1][0], colors[colors.len() - 1][1], colors[colors.len() - 1][2], 255];
+            return [
+                colors[colors.len() - 1][0],
+                colors[colors.len() - 1][1],
+                colors[colors.len() - 1][2],
+                255,
+            ];
         }
-        
+
         let t = position - index as f32; // Fractional part for interpolation
         let c1 = colors[index];
         let c2 = colors[index + 1];
-        
+
         // Interpolate between the two colors
         let rgb = super::colormap::lerp_color(c1, c2, t);
         [rgb[0], rgb[1], rgb[2], 255]
@@ -144,7 +159,7 @@ impl Colormap for Magma {
     fn map_normalized(&self, value: f32) -> [u8; 4] {
         // Pre-defined Magma colormap data (RGB triplets)
         let colors = [
-            [0, 0, 4],       // Black
+            [0, 0, 4], // Black
             [28, 16, 68],
             [79, 18, 123],
             [129, 37, 129],
@@ -154,21 +169,26 @@ impl Colormap for Magma {
             [254, 194, 135],
             [252, 253, 191], // Light yellow
         ];
-        
+
         // Calculate the position in our color array
         let position = value * (colors.len() - 1) as f32;
         let index = position.floor() as usize;
-        
+
         // Get the two colors to interpolate between
         if index >= colors.len() - 1 {
             // Last color
-            return [colors[colors.len() - 1][0], colors[colors.len() - 1][1], colors[colors.len() - 1][2], 255];
+            return [
+                colors[colors.len() - 1][0],
+                colors[colors.len() - 1][1],
+                colors[colors.len() - 1][2],
+                255,
+            ];
         }
-        
+
         let t = position - index as f32; // Fractional part for interpolation
         let c1 = colors[index];
         let c2 = colors[index + 1];
-        
+
         // Interpolate between the two colors
         let rgb = super::colormap::lerp_color(c1, c2, t);
         [rgb[0], rgb[1], rgb[2], 255]
@@ -187,7 +207,7 @@ impl Colormap for Cividis {
         // Pre-defined Cividis colormap data (RGB triplets)
         // Designed to be perceptually uniform and colorblind-friendly
         let colors = [
-            [0, 32, 76],     // Dark blue
+            [0, 32, 76], // Dark blue
             [0, 42, 102],
             [0, 52, 110],
             [25, 63, 115],
@@ -199,23 +219,28 @@ impl Colormap for Cividis {
             [172, 129, 54],
             [206, 142, 36],
             [237, 158, 16],
-            [255, 172, 0],   // Yellow
+            [255, 172, 0], // Yellow
         ];
-        
+
         // Calculate the position in our color array
         let position = value * (colors.len() - 1) as f32;
         let index = position.floor() as usize;
-        
+
         // Get the two colors to interpolate between
         if index >= colors.len() - 1 {
             // Last color
-            return [colors[colors.len() - 1][0], colors[colors.len() - 1][1], colors[colors.len() - 1][2], 255];
+            return [
+                colors[colors.len() - 1][0],
+                colors[colors.len() - 1][1],
+                colors[colors.len() - 1][2],
+                255,
+            ];
         }
-        
+
         let t = position - index as f32; // Fractional part for interpolation
         let c1 = colors[index];
         let c2 = colors[index + 1];
-        
+
         // Interpolate between the two colors
         let rgb = super::colormap::lerp_color(c1, c2, t);
         [rgb[0], rgb[1], rgb[2], 255]
@@ -238,19 +263,19 @@ mod tests {
         assert_eq!(Magma.name(), "magma");
         assert_eq!(Cividis.name(), "cividis");
     }
-    
+
     #[test]
     fn test_viridis_bounds() {
         let colormap = Viridis;
-        
+
         // Test extreme values
         let black = colormap.map_normalized(0.0);
         let yellow = colormap.map_normalized(1.0);
-        
+
         // Viridis goes from dark purple to yellow
         assert_eq!(black, [68, 1, 84, 255]);
         assert_eq!(yellow, [253, 231, 36, 255]);
-        
+
         // Test an intermediate value
         let middle = colormap.map_normalized(0.5);
         // Middle should be greenish
