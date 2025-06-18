@@ -39,6 +39,10 @@ pub struct Args {
     /// Log level (trace, debug, info, warn, error)
     #[arg(long, env = "ROSSBY_LOG_LEVEL", default_value = "info")]
     pub log_level: String,
+
+    /// Service discovery URL for registering this server
+    #[arg(long, env = "ROSSBY_DISCOVERY_URL")]
+    pub discovery_url: Option<String>,
 }
 
 /// Server configuration
@@ -55,6 +59,10 @@ pub struct ServerConfig {
     /// Number of worker threads (None = number of CPU cores)
     #[serde(default)]
     pub workers: Option<usize>,
+
+    /// Service discovery URL for registering this server (None = no service discovery)
+    #[serde(default)]
+    pub discovery_url: Option<String>,
 }
 
 /// Data processing configuration
@@ -104,6 +112,9 @@ impl Config {
         config.server.port = args.port;
         if args.workers.is_some() {
             config.server.workers = args.workers;
+        }
+        if args.discovery_url.is_some() {
+            config.server.discovery_url = args.discovery_url;
         }
         config.log_level = args.log_level;
 
@@ -193,6 +204,7 @@ impl Default for ServerConfig {
             host: default_host(),
             port: default_port(),
             workers: None,
+            discovery_url: None,
         }
     }
 }

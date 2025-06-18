@@ -10,7 +10,7 @@ use tower_http::cors::CorsLayer;
 use tracing::{error, info};
 
 use rossby::data_loader::load_netcdf;
-use rossby::handlers::{image_handler, metadata_handler, point_handler};
+use rossby::handlers::{heartbeat_handler, image_handler, metadata_handler, point_handler};
 use rossby::{Config, Result, RossbyError};
 
 #[tokio::main]
@@ -69,6 +69,7 @@ async fn main() -> Result<()> {
         .route("/metadata", get(metadata_handler))
         .route("/point", get(point_handler))
         .route("/image", get(image_handler))
+        .route("/heartbeat", get(heartbeat_handler))
         .layer(CorsLayer::permissive())
         .with_state(state);
 

@@ -79,6 +79,10 @@ async fn start_test_server() -> SocketAddr {
                 "/image",
                 axum::routing::get(rossby::handlers::image_handler),
             )
+            .route(
+                "/heartbeat",
+                axum::routing::get(rossby::handlers::heartbeat_handler),
+            )
             .layer(tower_http::cors::CorsLayer::permissive())
             .with_state(state);
 
@@ -236,6 +240,47 @@ async fn test_point_endpoint() {
         .as_str()
         .unwrap()
         .contains("outside the range"));
+}
+
+#[tokio::test]
+async fn test_heartbeat_endpoint() {
+    // Initialize test environment
+    let addr = init_test_environment().await;
+
+    // Make a request to the heartbeat endpoint
+    let response = http_client::get(&addr, "/heartbeat")
+        .await
+        .expect("Failed to make request");
+
+    assert_eq!(response.status(), 200);
+
+    let body = response.text().await.expect("Failed to get response body");
+    let json: serde_json::Value = serde_json::from_str(&body).expect("Failed to parse JSON response");
+
+    // Verify the heartbeat response structure
+    assert!(json.get("server_id").is_some());
+    assert!(json.get("timestamp").is_some());
+    assert!(json.get("uptime_seconds").is_some());
+    assert!(json.get("status").is_some());
+    assert_eq!(json.get("status").unwrap().as_str().unwrap(), "healthy");
+    
+    // Verify dataset information
+    assert!(json.get("dataset").is_some());
+    let dataset = json.get("dataset").unwrap();
+    assert!(dataset.get("variable_count").is_some());
+    assert!(dataset.get("variables").is_some());
+    assert!(dataset.get("dimension_count").is_some());
+    assert!(dataset.get("dimensions").is_some());
+    assert!(dataset.get("file_path").is_some());
+    assert!(dataset.get("data_memory_bytes").is_some());
+    
+    // Verify variables list contains our test variables
+    let variables = dataset.get("variables").unwrap().as_array().unwrap();
+    let var_names: Vec<_> = variables.iter()
+        .map(|v| v.as_str().unwrap())
+        .collect();
+    assert!(var_names.contains(&"temperature"));
+    assert!(var_names.contains(&"humidity"));
 }
 
 #[tokio::test]
