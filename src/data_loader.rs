@@ -56,8 +56,10 @@ fn load_netcdf_file(path: &Path) -> LoadResult {
     };
 
     info!("Opened NetCDF file: {}", path.display());
-    debug!("File has {} variables", file.variables().len());
-    debug!("File has {} dimensions", file.dimensions().len());
+    let variables_count = file.variables().count();
+    let dimensions_count = file.dimensions().count();
+    debug!("File has {} variables", variables_count);
+    debug!("File has {} dimensions", dimensions_count);
 
     // Extract file metadata
     let metadata = extract_metadata(&file)?;
@@ -73,8 +75,8 @@ fn extract_metadata(file: &netcdf::File) -> Result<Metadata> {
     // Extract global attributes
     let mut global_attributes = HashMap::new();
     for attr in file.attributes() {
-        let value = convert_attribute(attr)?;
-        global_attributes.insert(attr.name(), value);
+        let value = convert_attribute(&attr)?;
+        global_attributes.insert(attr.name().to_string(), value);
     }
 
     // Extract dimensions
@@ -115,7 +117,7 @@ fn extract_metadata(file: &netcdf::File) -> Result<Metadata> {
         // Extract variable attributes
         let mut var_attrs = HashMap::new();
         for attr in var.attributes() {
-            let value = convert_attribute(attr)?;
+            let value = convert_attribute(&attr)?;
             var_attrs.insert(attr.name().to_string(), value);
         }
 
@@ -132,7 +134,7 @@ fn extract_metadata(file: &netcdf::File) -> Result<Metadata> {
 
         // If this is a coordinate variable (name matches a dimension),
         // extract the coordinate values
-        if file.dimension(var.name()).is_some() {
+        if file.dimension(&var.name()).is_some() {
             let coord_values = extract_coordinate_values(&var)?;
             coordinates.insert(var.name().to_string(), coord_values);
         }
@@ -160,109 +162,69 @@ fn extract_metadata(file: &netcdf::File) -> Result<Metadata> {
 
 /// Check if a variable has a supported type that we can work with
 fn is_supported_variable(var: &NetCDFVariable) -> bool {
-    use netcdf::types::BasicType;
+    use netcdf::types::{BasicType, VariableType};
 
-    match var.vartype() {
-        BasicType::Byte
-        | BasicType::Char
-        | BasicType::Short
-        | BasicType::Int
-        | BasicType::Float
-        | BasicType::Double => true,
-        _ => false,
-    }
+    matches!(var.vartype(), 
+        VariableType::Basic(BasicType::Byte)
+        | VariableType::Basic(BasicType::Char)
+        | VariableType::Basic(BasicType::Short)
+        | VariableType::Basic(BasicType::Int)
+        | VariableType::Basic(BasicType::Float)
+        | VariableType::Basic(BasicType::Double)
+    )
 }
 
 /// Convert a NetCDF attribute to our AttributeValue enum
-fn convert_attribute(attr: Attribute) -> Result<AttributeValue> {
-    use netcdf::types::BasicType;
+fn convert_attribute(attr: &Attribute) -> Result<AttributeValue> {
+    use netcdf::AttributeValue as NcAttributeValue;
 
-    match attr.vartype() {
+    // The new API returns an AttributeValue enum directly
+    let value = attr.value()?;
+    
+    match value {
         // String types
-        BasicType::Char => {
-            let value = attr.value::<String>()?;
-            Ok(AttributeValue::Text(value))
-        }
+        NcAttributeValue::Str(s) => Ok(AttributeValue::Text(s)),
+        
         // Numeric types - store as f64 for simplicity
-        BasicType::Byte => {
-            if attr.len() == 1 {
-                let value = attr.value::<i8>()? as f64;
-                Ok(AttributeValue::Number(value))
-            } else {
-                let values: Vec<i8> = attr.values()?;
-                let f64_values: Vec<f64> = values.into_iter().map(|v| v as f64).collect();
-                Ok(AttributeValue::NumberArray(f64_values))
-            }
-        }
-        BasicType::Short => {
-            if attr.len() == 1 {
-                let value = attr.value::<i16>()? as f64;
-                Ok(AttributeValue::Number(value))
-            } else {
-                let values: Vec<i16> = attr.values()?;
-                let f64_values: Vec<f64> = values.into_iter().map(|v| v as f64).collect();
-                Ok(AttributeValue::NumberArray(f64_values))
-            }
-        }
-        BasicType::Int => {
-            if attr.len() == 1 {
-                let value = attr.value::<i32>()? as f64;
-                Ok(AttributeValue::Number(value))
-            } else {
-                let values: Vec<i32> = attr.values()?;
-                let f64_values: Vec<f64> = values.into_iter().map(|v| v as f64).collect();
-                Ok(AttributeValue::NumberArray(f64_values))
-            }
-        }
-        BasicType::Float => {
-            if attr.len() == 1 {
-                let value = attr.value::<f32>()? as f64;
-                Ok(AttributeValue::Number(value))
-            } else {
-                let values: Vec<f32> = attr.values()?;
-                let f64_values: Vec<f64> = values.into_iter().map(|v| v as f64).collect();
-                Ok(AttributeValue::NumberArray(f64_values))
-            }
-        }
-        BasicType::Double => {
-            if attr.len() == 1 {
-                let value = attr.value::<f64>()?;
-                Ok(AttributeValue::Number(value))
-            } else {
-                let values: Vec<f64> = attr.values()?;
-                Ok(AttributeValue::NumberArray(values))
-            }
-        }
+        NcAttributeValue::Uchar(v) => Ok(AttributeValue::Number(v as f64)),
+        NcAttributeValue::Schar(v) => Ok(AttributeValue::Number(v as f64)),
+        NcAttributeValue::Short(v) => Ok(AttributeValue::Number(v as f64)),
+        NcAttributeValue::Int(v) => Ok(AttributeValue::Number(v as f64)),
+        NcAttributeValue::Float(v) => Ok(AttributeValue::Number(v as f64)),
+        NcAttributeValue::Double(v) => Ok(AttributeValue::Number(v)),
+        
+        // For array types, the netcdf crate now returns a Vec<T>, but we need to check the API
+        // to see what the exact variants are
         _ => {
-            // Unsupported types - convert to string representation
-            Ok(AttributeValue::Text(format!("{:?}", attr.vartype())))
-        }
+            // Convert any other types to a text representation for now
+            Ok(AttributeValue::Text(format!("{:?}", value)))
+        },
     }
 }
 
 /// Extract coordinate values from a coordinate variable
 fn extract_coordinate_values(var: &NetCDFVariable) -> Result<Vec<f64>> {
-    use netcdf::types::BasicType;
+    use netcdf::types::{BasicType, VariableType};
 
     match var.vartype() {
-        BasicType::Byte => {
-            let values: Vec<i8> = var.values()?;
+        VariableType::Basic(BasicType::Byte) => {
+            let values: Vec<i8> = var.get_values::<i8, _>(&[] as &[netcdf::Extent])?;
             Ok(values.into_iter().map(|v| v as f64).collect())
         }
-        BasicType::Short => {
-            let values: Vec<i16> = var.values()?;
+        VariableType::Basic(BasicType::Short) => {
+            let values: Vec<i16> = var.get_values::<i16, _>(&[] as &[netcdf::Extent])?;
             Ok(values.into_iter().map(|v| v as f64).collect())
         }
-        BasicType::Int => {
-            let values: Vec<i32> = var.values()?;
+        VariableType::Basic(BasicType::Int) => {
+            let values: Vec<i32> = var.get_values::<i32, _>(&[] as &[netcdf::Extent])?;
             Ok(values.into_iter().map(|v| v as f64).collect())
         }
-        BasicType::Float => {
-            let values: Vec<f32> = var.values()?;
+        VariableType::Basic(BasicType::Float) => {
+            let values: Vec<f32> = var.get_values::<f32, _>(&[] as &[netcdf::Extent])?;
             Ok(values.into_iter().map(|v| v as f64).collect())
         }
-        BasicType::Double => {
-            let values: Vec<f64> = var.values()?;
+        VariableType::Basic(BasicType::Double) => {
+            let values: Vec<f64> = var.get_values::<f64, _>(&[] as &[netcdf::Extent])?;
             Ok(values)
         }
         _ => {
@@ -305,34 +267,34 @@ fn extract_data(
 
 /// Convert a NetCDF variable to an ndarray Array<f32, IxDyn>
 fn convert_variable_to_array(var: &NetCDFVariable, shape: &[usize]) -> Result<Array<f32, IxDyn>> {
-    use netcdf::types::BasicType;
+    use netcdf::types::{BasicType, VariableType};
 
     // Create the shape for the ndarray
     let dim = Dim(shape.to_vec());
 
     match var.vartype() {
-        BasicType::Byte => {
-            let data: Vec<i8> = var.values()?;
+        VariableType::Basic(BasicType::Byte) => {
+            let data: Vec<i8> = var.get_values::<i8, _>(&[] as &[netcdf::Extent])?;
             let array = Array::from_shape_vec(dim, data.into_iter().map(|v| v as f32).collect())?;
             Ok(array)
         }
-        BasicType::Short => {
-            let data: Vec<i16> = var.values()?;
+        VariableType::Basic(BasicType::Short) => {
+            let data: Vec<i16> = var.get_values::<i16, _>(&[] as &[netcdf::Extent])?;
             let array = Array::from_shape_vec(dim, data.into_iter().map(|v| v as f32).collect())?;
             Ok(array)
         }
-        BasicType::Int => {
-            let data: Vec<i32> = var.values()?;
+        VariableType::Basic(BasicType::Int) => {
+            let data: Vec<i32> = var.get_values::<i32, _>(&[] as &[netcdf::Extent])?;
             let array = Array::from_shape_vec(dim, data.into_iter().map(|v| v as f32).collect())?;
             Ok(array)
         }
-        BasicType::Float => {
-            let data: Vec<f32> = var.values()?;
+        VariableType::Basic(BasicType::Float) => {
+            let data: Vec<f32> = var.get_values::<f32, _>(&[] as &[netcdf::Extent])?;
             let array = Array::from_shape_vec(dim, data)?;
             Ok(array)
         }
-        BasicType::Double => {
-            let data: Vec<f64> = var.values()?;
+        VariableType::Basic(BasicType::Double) => {
+            let data: Vec<f64> = var.get_values::<f64, _>(&[] as &[netcdf::Extent])?;
             let array = Array::from_shape_vec(dim, data.into_iter().map(|v| v as f32).collect())?;
             Ok(array)
         }
