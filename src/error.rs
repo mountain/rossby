@@ -95,6 +95,14 @@ impl From<ndarray::ShapeError> for RossbyError {
     }
 }
 
+impl From<netcdf::Error> for RossbyError {
+    fn from(err: netcdf::Error) -> Self {
+        RossbyError::NetCdf {
+            message: err.to_string(),
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

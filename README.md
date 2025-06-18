@@ -138,9 +138,34 @@ cargo build --release
 ./target/release/rossby --help
 ```
 
+## Development
+
+### Continuous Integration
+
+This project uses GitHub Actions for continuous integration. The CI pipeline runs the following checks on every push and pull request:
+
+1. `cargo check` - Verifies the code compiles without errors
+2. `cargo test` - Runs all tests to ensure they pass
+3. `cargo clippy` - Performs static analysis to catch common mistakes
+4. `cargo fmt --check` - Ensures code adheres to formatting standards
+
+You can see the CI configuration in the `.github/workflows/ci.yml` file.
+
+### Git Hooks
+
+To ensure code quality before commits are made, we provide Git hooks in the `hooks/` directory. These hooks automatically run tests and other checks before allowing commits.
+
+To install the hooks, follow the instructions in the [hooks/README.md](hooks/README.md) file.
+
 ## Contributing
 
-Contributions are welcome\! Please feel free to open an issue or submit a pull request.
+Contributions are welcome! Please feel free to open an issue or submit a pull request.
+
+Before submitting a PR, please make sure:
+1. All tests pass (`cargo test`)
+2. The code is properly formatted (`cargo fmt`)
+3. There are no clippy warnings (`cargo clippy`)
+4. You've added tests for any new functionality
 
 ## License
 

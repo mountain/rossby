@@ -1,0 +1,61 @@
+#!/bin/sh
+#
+# Pre-commit hook that verifies if all tests pass.
+# Called by "git commit" with no arguments. The hook should
+# exit with non-zero status after issuing an appropriate message if
+# it wants to stop the commit.
+
+echo "Running pre-commit checks..."
+
+# Stash unstaged changes
+git stash -q --keep-index
+
+# Run cargo checks
+echo "Running cargo check..."
+cargo check
+CHECK_RESULT=$?
+
+if [ $CHECK_RESULT -ne 0 ]; then
+    echo "cargo check failed, commit aborted"
+    git stash pop -q
+    exit 1
+fi
+
+# Run tests
+echo "Running cargo test..."
+cargo test
+TEST_RESULT=$?
+
+if [ $TEST_RESULT -ne 0 ]; then
+    echo "Tests failed, commit aborted"
+    git stash pop -q
+    exit 1
+fi
+
+# Run clippy
+echo "Running cargo clippy..."
+cargo clippy -- -D warnings
+CLIPPY_RESULT=$?
+
+if [ $CLIPPY_RESULT -ne 0 ]; then
+    echo "Clippy checks failed, commit aborted"
+    git stash pop -q
+    exit 1
+fi
+
+# Check formatting
+echo "Running cargo fmt..."
+cargo fmt --all -- --check
+FMT_RESULT=$?
+
+if [ $FMT_RESULT -ne 0 ]; then
+    echo "Formatting issues found, commit aborted"
+    git stash pop -q
+    exit 1
+fi
+
+# Pop stashed changes
+git stash pop -q
+
+echo "All pre-commit checks passed!"
+exit 0
