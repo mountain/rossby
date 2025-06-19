@@ -18,7 +18,6 @@ The target user is a scientist, engineer, or developer who has a NetCDF file and
 The system consists of a single, self-contained Rust binary.
 
 ````
-
 \+-------------------------------------------------------------+
 |                     The `rossby` Process                      |
 |                                                             |
@@ -41,8 +40,8 @@ The system consists of a single, self-contained Rust binary.
 |       +---------------------------------+--------+-----------+
 |                                                             |
 \+-------------------------------------------------------------+
+````
 
-```
 A static NetCDF file on disk is the single source of truth, loaded into the process at startup.
 
 ## 4. Component Deep Dive
