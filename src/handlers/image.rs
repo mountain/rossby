@@ -205,26 +205,30 @@ pub async fn image_handler(
             let bbox_str = match &params.bbox {
                 Some(bbox) => bbox.clone(),
                 None => {
-                    let (min_lon, min_lat, max_lon, max_lat) = state.get_lat_lon_bounds().unwrap_or((0.0, -90.0, 360.0, 90.0));
-                    format!("{:.2},{:.2},{:.2},{:.2}", min_lon, min_lat, max_lon, max_lat)
+                    let (min_lon, min_lat, max_lon, max_lat) = state
+                        .get_lat_lon_bounds()
+                        .unwrap_or((0.0, -90.0, 360.0, 90.0));
+                    format!(
+                        "{:.2},{:.2},{:.2},{:.2}",
+                        min_lon, min_lat, max_lon, max_lat
+                    )
                 }
             };
-            
+
             // Determine the time index - similar logic as in generate_image_response
             let time_index = if let Some(raw_index) = params.__time_index {
                 raw_index
             } else if let Some(time_val) = params.time {
                 match state.find_coordinate_index_exact("time", time_val) {
                     Ok(idx) => idx,
-                    Err(_) => {
-                        state.find_coordinate_index("time", time_val)
-                            .unwrap_or_else(|_| params.time_index.unwrap_or(0))
-                    }
+                    Err(_) => state
+                        .find_coordinate_index("time", time_val)
+                        .unwrap_or_else(|_| params.time_index.unwrap_or(0)),
                 }
             } else {
                 params.time_index.unwrap_or(0)
             };
-            
+
             // Get the actual time value used (if available)
             let time_value_str = if let Some(time_val) = params.time {
                 format!("{}", time_val)
@@ -237,7 +241,7 @@ pub async fn image_handler(
             } else {
                 "unknown".to_string()
             };
-            
+
             info!(
                 endpoint = "/image",
                 request_id = %request_id,
@@ -309,12 +313,18 @@ fn generate_image_response(state: Arc<AppState>, params: &ImageQuery) -> Result<
 
     // Verify variable is suitable for image rendering (must have latitude and longitude dimensions)
     let var_meta = state.get_variable_metadata_checked(&var_name)?;
-    
+
     // Check for common latitude dimension names (lat, latitude)
-    let has_lat = var_meta.dimensions.iter().any(|d| d == "lat" || d == "latitude");
-    
+    let has_lat = var_meta
+        .dimensions
+        .iter()
+        .any(|d| d == "lat" || d == "latitude");
+
     // Check for common longitude dimension names (lon, longitude)
-    let has_lon = var_meta.dimensions.iter().any(|d| d == "lon" || d == "longitude");
+    let has_lon = var_meta
+        .dimensions
+        .iter()
+        .any(|d| d == "lon" || d == "longitude");
 
     if !has_lat || !has_lon {
         return Err(RossbyError::VariableNotSuitableForImage { name: var_name });
@@ -332,13 +342,17 @@ fn generate_image_response(state: Arc<AppState>, params: &ImageQuery) -> Result<
         // Convert physical time value to index
         match state.find_coordinate_index_exact("time", time_val) {
             Ok(idx) => idx,
-            Err(RossbyError::PhysicalValueNotFound { dimension, value, available }) => {
-                return Err(RossbyError::PhysicalValueNotFound { 
-                    dimension, 
-                    value, 
-                    available 
+            Err(RossbyError::PhysicalValueNotFound {
+                dimension,
+                value,
+                available,
+            }) => {
+                return Err(RossbyError::PhysicalValueNotFound {
+                    dimension,
+                    value,
+                    available,
                 });
-            },
+            }
             Err(_) => {
                 // Fall back to closest match if exact match fails
                 state.find_coordinate_index("time", time_val)?
@@ -451,7 +465,7 @@ fn generate_image_response(state: Arc<AppState>, params: &ImageQuery) -> Result<
     } else {
         state.get_coordinate_checked("longitude")?
     };
-    
+
     let _lat_coords = if state.has_coordinate("lat") {
         state.get_coordinate_checked("lat")?
     } else {

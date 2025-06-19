@@ -368,7 +368,10 @@ impl AppState {
 
         // Ensure we have lat and lon dimensions
         let lat_dim_idx = lat_dim_idx.ok_or_else(|| RossbyError::DataNotFound {
-            message: format!("Variable {} does not have a latitude dimension (looking for 'lat' or 'latitude')", var_name),
+            message: format!(
+                "Variable {} does not have a latitude dimension (looking for 'lat' or 'latitude')",
+                var_name
+            ),
         })?;
 
         let lon_dim_idx = lon_dim_idx.ok_or_else(|| RossbyError::DataNotFound {
