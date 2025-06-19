@@ -41,8 +41,10 @@ pub struct ImageQuery {
     pub var: String,
     /// Time index (0-based)
     pub time_index: Option<usize>,
-    /// Time value (alias for time_index for compatibility)
-    pub time: Option<usize>,
+    /// Time physical value (preferred over time_index)
+    pub time: Option<f64>,
+    /// Raw time index (preferred over time_index, used by experts)
+    pub __time_index: Option<usize>,
     /// Bounding box as "min_lon,min_lat,max_lon,max_lat"
     pub bbox: Option<String>,
     /// Image width in pixels
@@ -208,11 +210,40 @@ pub async fn image_handler(
                 }
             };
             
+            // Determine the time index - similar logic as in generate_image_response
+            let time_index = if let Some(raw_index) = params.__time_index {
+                raw_index
+            } else if let Some(time_val) = params.time {
+                match state.find_coordinate_index_exact("time", time_val) {
+                    Ok(idx) => idx,
+                    Err(_) => {
+                        state.find_coordinate_index("time", time_val)
+                            .unwrap_or_else(|_| params.time_index.unwrap_or(0))
+                    }
+                }
+            } else {
+                params.time_index.unwrap_or(0)
+            };
+            
+            // Get the actual time value used (if available)
+            let time_value_str = if let Some(time_val) = params.time {
+                format!("{}", time_val)
+            } else if let Some(time_coords) = state.get_coordinate("time") {
+                if time_index < time_coords.len() {
+                    format!("{}", time_coords[time_index])
+                } else {
+                    "unknown".to_string()
+                }
+            } else {
+                "unknown".to_string()
+            };
+            
             info!(
                 endpoint = "/image",
                 request_id = %request_id,
                 var = %params.var,
-                time_index = params.time_index.or(params.time).unwrap_or(0),
+                time_index = time_index,
+                time_value = %time_value_str,
                 bbox = %bbox_str,
                 width = params.width.unwrap_or(DEFAULT_WIDTH),
                 height = params.height.unwrap_or(DEFAULT_HEIGHT),
@@ -289,8 +320,34 @@ fn generate_image_response(state: Arc<AppState>, params: &ImageQuery) -> Result<
         return Err(RossbyError::VariableNotSuitableForImage { name: var_name });
     }
 
-    // Get time index (default to 0) - support both time_index and time parameters
-    let time_index = params.time_index.or(params.time).unwrap_or(0);
+    // Determine time index based on priority:
+    // 1. Raw index (__time_index) - most specific
+    // 2. Physical value (time) - preferred for normal use
+    // 3. Legacy time_index - deprecated but supported
+    // 4. Default to 0
+    let time_index = if let Some(raw_index) = params.__time_index {
+        // Use the raw index directly
+        raw_index
+    } else if let Some(time_val) = params.time {
+        // Convert physical time value to index
+        match state.find_coordinate_index_exact("time", time_val) {
+            Ok(idx) => idx,
+            Err(RossbyError::PhysicalValueNotFound { dimension, value, available }) => {
+                return Err(RossbyError::PhysicalValueNotFound { 
+                    dimension, 
+                    value, 
+                    available 
+                });
+            },
+            Err(_) => {
+                // Fall back to closest match if exact match fails
+                state.find_coordinate_index("time", time_val)?
+            }
+        }
+    } else {
+        // Fall back to legacy time_index or default
+        params.time_index.unwrap_or(0)
+    };
 
     // Check time index is in bounds
     if time_index >= state.time_dim_size() {
