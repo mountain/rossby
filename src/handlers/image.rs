@@ -187,7 +187,7 @@ fn adjust_bbox_for_center(
     } else {
         360.0 - min_lon + max_lon
     };
-    
+
     if span > 330.0 {
         // Return the full longitude range for the selected center
         let center_lon = match center {
@@ -196,7 +196,7 @@ fn adjust_bbox_for_center(
             "pacific" => 180.0,
             custom => custom.parse::<f32>().unwrap_or(0.0),
         };
-        
+
         return (
             center_lon - 180.0, // Minimum possible longitude
             min_lat,
@@ -221,7 +221,7 @@ fn adjust_bbox_for_center(
 
     // Check if the bbox crosses the dateline (either naturally or after normalization)
     let crosses_dateline = min_lon > max_lon || normalized_min > normalized_max;
-    
+
     if crosses_dateline {
         // For data fetching, we'll need to fetch two separate regions
         // But for now, we're just adjusting the bbox to the full longitude range
@@ -276,7 +276,7 @@ fn generate_image(
             let scale_x = width as f32 / data.shape()[1] as f32;
             let scale_y = height as f32 / data.shape()[0] as f32;
             let scale = scale_x.max(scale_y);
-            
+
             if scale <= 0.5 {
                 // Downsampling by more than 2x: use bilinear to avoid aliasing
                 crate::interpolation::get_interpolator("bilinear")?
@@ -375,14 +375,16 @@ fn generate_image_response(state: Arc<AppState>, params: ImageQuery) -> Result<R
 
     // Verify variable exists
     if !state.has_variable(&var_name) {
-        return Err(RossbyError::InvalidVariables { names: vec![var_name] });
+        return Err(RossbyError::InvalidVariables {
+            names: vec![var_name],
+        });
     }
-    
+
     // Verify variable is suitable for image rendering (must have lat and lon dimensions)
     let var_meta = state.get_variable_metadata_checked(&var_name)?;
     let has_lat = var_meta.dimensions.iter().any(|d| d == "lat");
     let has_lon = var_meta.dimensions.iter().any(|d| d == "lon");
-    
+
     if !has_lat || !has_lon {
         return Err(RossbyError::VariableNotSuitableForImage { name: var_name });
     }
@@ -457,7 +459,76 @@ fn generate_image_response(state: Arc<AppState>, params: ImageQuery) -> Result<R
     )?;
 
     // Generate the image with the specified interpolation method
-    let img = generate_image(data.view(), width, height, colormap.as_ref(), resampling)?;
+    let mut img = generate_image(data.view(), width, height, colormap.as_ref(), resampling)?;
+
+    // Draw grid lines if requested
+    if params.grid.unwrap_or(false) {
+        // Calculate appropriate grid spacing based on the bbox size
+        let lon_range = max_lon - min_lon;
+        let lat_range = max_lat - min_lat;
+
+        // Choose grid spacing dynamically:
+        // - For small areas (< 10°), use 1° spacing
+        // - For medium areas (10-45°), use 5° spacing
+        // - For large areas (45-180°), use 10° spacing
+        // - For global views, use 15° spacing
+        let lon_step = if lon_range < 10.0 {
+            1.0
+        } else if lon_range < 45.0 {
+            5.0
+        } else if lon_range < 180.0 {
+            10.0
+        } else {
+            15.0
+        };
+
+        let lat_step = if lat_range < 10.0 {
+            1.0
+        } else if lat_range < 45.0 {
+            5.0
+        } else if lat_range < 90.0 {
+            10.0
+        } else {
+            15.0
+        };
+
+        crate::colormaps::draw_grid_lines(
+            &mut img,
+            crate::colormaps::geoutil::GridConfig {
+                min_lon,
+                min_lat,
+                max_lon,
+                max_lat,
+                lon_step,
+                lat_step,
+                color: crate::colormaps::DEFAULT_GRID_COLOR,
+            },
+        );
+    }
+
+    // Draw coastlines if requested
+    if params.coastlines.unwrap_or(false) {
+        crate::colormaps::draw_coastlines(
+            &mut img,
+            min_lon,
+            min_lat,
+            max_lon,
+            max_lat,
+            crate::colormaps::DEFAULT_COASTLINE_COLOR,
+        );
+    }
+
+    // Apply pole enhancement if requested
+    if params.enhance_poles.unwrap_or(false) {
+        // Only apply pole enhancement if the image contains polar regions
+        // (latitudes above 60° north or below 60° south)
+        if min_lat < -60.0 || max_lat > 60.0 {
+            img = crate::colormaps::enhance_poles(
+                &img, min_lat, max_lat, 60.0, // threshold latitude (degrees)
+                0.5,  // enhancement factor (subtle effect)
+            );
+        }
+    }
 
     // Encode the image to the specified format
     let mut buffer = Cursor::new(Vec::new());
