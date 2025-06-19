@@ -185,10 +185,11 @@ async fn test_point_endpoint() {
 
     println!("Using server address for point endpoint test: {}", addr);
 
-    // Test nearest neighbor interpolation (using coordinates within our test data bounds)
+    // Test nearest neighbor interpolation (using updated coordinates to match fixed data)
+    // Using coordinates in the 0-360 longitude system instead of -180 to 180
     let response = http_client::get(
         &addr,
-        "/point?lon=-170.0&lat=10.0&time_index=0&vars=temperature&interpolation=nearest",
+        "/point?lon=190.0&lat=10.0&time_index=0&vars=temperature&interpolation=nearest",
     )
     .await
     .expect("Failed to make request");
@@ -203,10 +204,10 @@ async fn test_point_endpoint() {
     assert!(json.get("temperature").is_some());
     assert!(json.get("temperature").unwrap().is_number());
 
-    // Test bilinear interpolation with multiple variables
+    // Test bilinear interpolation with multiple variables (with updated coordinates)
     let response = http_client::get(
         &addr,
-        "/point?lon=-160.0&lat=20.0&time_index=0&vars=temperature,humidity&interpolation=bilinear",
+        "/point?lon=200.0&lat=20.0&time_index=0&vars=temperature,humidity&interpolation=bilinear",
     )
     .await
     .expect("Failed to make request");
@@ -385,18 +386,20 @@ async fn test_image_geography_features() {
     assert_eq!(response.status(), 200);
 
     // Test dateline crossing (without wrap_longitude should fail)
+    // Modified to use coordinates in the 0-360 system
     let response = http_client::get(
         &addr,
-        "/image?var=temperature&time_index=0&width=100&height=80&bbox=170,-30,-170,30",
+        "/image?var=temperature&time_index=0&width=100&height=80&bbox=350,-30,10,30",
     )
     .await
     .expect("Failed to make request");
     assert_eq!(response.status(), 400); // Should fail without wrap_longitude
 
     // Test dateline crossing with wrap_longitude=true
+    // Modified to use coordinates in the 0-360 system
     let response = http_client::get(
         &addr,
-        "/image?var=temperature&time_index=0&width=100&height=80&bbox=170,-30,-170,30&wrap_longitude=true",
+        "/image?var=temperature&time_index=0&width=100&height=80&bbox=350,-30,10,30&wrap_longitude=true",
     )
     .await
     .expect("Failed to make request");

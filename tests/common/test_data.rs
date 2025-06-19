@@ -34,7 +34,7 @@ pub fn create_linear_gradient_nc(path: &Path, size: (usize, usize)) -> Result<()
     file.add_attribute("title", "Linear Gradient Test Data")?;
     file.add_attribute("institution", "rossby test suite")?;
 
-    // Create coordinate values
+    // Create coordinate values - use 0-360 longitude system
     let lon_values: Vec<f32> = (0..size.0)
         .map(|i| (i as f32) * 360.0 / (size.0 as f32))
         .collect();
@@ -77,7 +77,7 @@ pub fn create_linear_gradient_nc(path: &Path, size: (usize, usize)) -> Result<()
     // Add and configure the time variable
     {
         let mut time_var = file.add_variable::<f32>("time", &["time"])?;
-        time_var.put_attribute("units", "days since 2000-01-01")?;
+        time_var.put_attribute("units", "days since 1982-01-01")?;
         time_var.put_values(&time_values, &[..])?;
     }
 
@@ -115,7 +115,7 @@ pub fn create_sinusoidal_nc(path: &Path, size: (usize, usize)) -> Result<()> {
     file.add_attribute("title", "Sinusoidal Pattern Test Data")?;
     file.add_attribute("institution", "rossby test suite")?;
 
-    // Create coordinate values
+    // Create coordinate values - use 0-360 longitude system
     let lon_values: Vec<f32> = (0..size.0)
         .map(|i| (i as f32) * 360.0 / (size.0 as f32))
         .collect();
@@ -164,7 +164,7 @@ pub fn create_sinusoidal_nc(path: &Path, size: (usize, usize)) -> Result<()> {
     // Add and configure the time variable
     {
         let mut time_var = file.add_variable::<f32>("time", &["time"])?;
-        time_var.put_attribute("units", "days since 2000-01-01")?;
+        time_var.put_attribute("units", "days since 1982-01-01")?;
         time_var.put_values(&time_values, &[..])?;
     }
 
@@ -202,7 +202,7 @@ pub fn create_gaussian_blob_nc(path: &Path, size: (usize, usize)) -> Result<()> 
     file.add_attribute("title", "Gaussian Blob Test Data")?;
     file.add_attribute("institution", "rossby test suite")?;
 
-    // Create coordinate values
+    // Create coordinate values - use 0-360 longitude system
     let lon_values: Vec<f32> = (0..size.0)
         .map(|i| (i as f32) * 360.0 / (size.0 as f32))
         .collect();
@@ -253,7 +253,7 @@ pub fn create_gaussian_blob_nc(path: &Path, size: (usize, usize)) -> Result<()> 
     // Add and configure the time variable
     {
         let mut time_var = file.add_variable::<f32>("time", &["time"])?;
-        time_var.put_attribute("units", "days since 2000-01-01")?;
+        time_var.put_attribute("units", "days since 1982-01-01")?;
         time_var.put_values(&time_values, &[..])?;
     }
 
@@ -300,8 +300,8 @@ pub fn create_test_weather_nc(path: &Path) -> Result<()> {
     file.add_attribute("source", "Synthetic weather data for testing")?;
     file.add_attribute("references", "None")?;
 
-    // Create coordinate values
-    let lon_values: Vec<f32> = (0..lon_size).map(|i| -180.0 + (i as f32) * 10.0).collect();
+    // Create coordinate values - switched to 0-360 longitude system
+    let lon_values: Vec<f32> = (0..lon_size).map(|i| (i as f32) * 10.0).collect();
     let lat_values: Vec<f32> = (0..lat_size).map(|i| -90.0 + (i as f32) * 10.0).collect();
     let time_values: Vec<f32> = (0..time_steps).map(|i| i as f32).collect();
 
@@ -382,7 +382,7 @@ pub fn create_test_weather_nc(path: &Path) -> Result<()> {
     // Add and configure the time variable
     {
         let mut time_var = file.add_variable::<f32>("time", &["time"])?;
-        time_var.put_attribute("units", "days since 2000-01-01")?;
+        time_var.put_attribute("units", "days since 1982-01-01")?;
         time_var.put_attribute("long_name", "Time")?;
         time_var.put_attribute("calendar", "standard")?;
         time_var.put_values(&time_values, &[..])?;

@@ -629,7 +629,7 @@ mod tests {
 
         // Verify the first temperature value (approximately)
         let first_value = t2m_data[[0, 0, 0]];
-        let expected_value = 251.48; // From the inspection result 251.47910694200166
+        let expected_value = 253.80; // Updated value from the 0-360 longitude system data
         assert!(
             (first_value - expected_value).abs() < 0.01,
             "First value {} should be close to expected {}",
