@@ -265,10 +265,14 @@ fn generate_image_response(state: Arc<AppState>, params: &ImageQuery) -> Result<
         });
     }
 
-    // Verify variable is suitable for image rendering (must have lat and lon dimensions)
+    // Verify variable is suitable for image rendering (must have latitude and longitude dimensions)
     let var_meta = state.get_variable_metadata_checked(&var_name)?;
-    let has_lat = var_meta.dimensions.iter().any(|d| d == "lat");
-    let has_lon = var_meta.dimensions.iter().any(|d| d == "lon");
+    
+    // Check for common latitude dimension names (lat, latitude)
+    let has_lat = var_meta.dimensions.iter().any(|d| d == "lat" || d == "latitude");
+    
+    // Check for common longitude dimension names (lon, longitude)
+    let has_lon = var_meta.dimensions.iter().any(|d| d == "lon" || d == "longitude");
 
     if !has_lat || !has_lon {
         return Err(RossbyError::VariableNotSuitableForImage { name: var_name });
@@ -373,9 +377,18 @@ fn generate_image_response(state: Arc<AppState>, params: &ImageQuery) -> Result<
         });
     }
 
-    // Get the coordinate arrays for the region
-    let lon_coords = state.get_coordinate_checked("lon")?;
-    let _lat_coords = state.get_coordinate_checked("lat")?;
+    // Get the coordinate arrays for the region - try both common naming conventions
+    let lon_coords = if state.has_coordinate("lon") {
+        state.get_coordinate_checked("lon")?
+    } else {
+        state.get_coordinate_checked("longitude")?
+    };
+    
+    let _lat_coords = if state.has_coordinate("lat") {
+        state.get_coordinate_checked("lat")?
+    } else {
+        state.get_coordinate_checked("latitude")?
+    };
 
     // Get data for the specified time slice with adjusted coordinates
     // Note: We need to handle dateline crossing before we slice the data

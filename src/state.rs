@@ -208,6 +208,11 @@ impl AppState {
         self.metadata.variables.contains_key(name)
     }
 
+    /// Check if a coordinate exists
+    pub fn has_coordinate(&self, name: &str) -> bool {
+        self.metadata.coordinates.contains_key(name)
+    }
+
     /// Find the index of a coordinate value within its array
     /// Returns the nearest index if exact match is not found
     pub fn find_coordinate_index(&self, dim_name: &str, value: f64) -> Result<usize> {
@@ -354,25 +359,34 @@ impl AppState {
         for (i, dim) in dimensions.iter().enumerate() {
             if dim == "time" {
                 time_dim_idx = Some(i);
-            } else if dim == "lat" {
+            } else if dim == "lat" || dim == "latitude" {
                 lat_dim_idx = Some(i);
-            } else if dim == "lon" {
+            } else if dim == "lon" || dim == "longitude" {
                 lon_dim_idx = Some(i);
             }
         }
 
         // Ensure we have lat and lon dimensions
         let lat_dim_idx = lat_dim_idx.ok_or_else(|| RossbyError::DataNotFound {
-            message: format!("Variable {} does not have a lat dimension", var_name),
+            message: format!("Variable {} does not have a latitude dimension (looking for 'lat' or 'latitude')", var_name),
         })?;
 
         let lon_dim_idx = lon_dim_idx.ok_or_else(|| RossbyError::DataNotFound {
-            message: format!("Variable {} does not have a lon dimension", var_name),
+            message: format!("Variable {} does not have a longitude dimension (looking for 'lon' or 'longitude')", var_name),
         })?;
 
-        // Get coordinate arrays
-        let lon_coords = self.get_coordinate_checked("lon")?;
-        let lat_coords = self.get_coordinate_checked("lat")?;
+        // Get coordinate arrays - try both common naming conventions
+        let lon_coords = if self.metadata.coordinates.contains_key("lon") {
+            self.get_coordinate_checked("lon")?
+        } else {
+            self.get_coordinate_checked("longitude")?
+        };
+
+        let lat_coords = if self.metadata.coordinates.contains_key("lat") {
+            self.get_coordinate_checked("lat")?
+        } else {
+            self.get_coordinate_checked("latitude")?
+        };
 
         // Check for empty coordinate arrays
         if lon_coords.is_empty() || lat_coords.is_empty() {
