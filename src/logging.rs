@@ -40,13 +40,14 @@ pub fn init_tracing(log_level: &str) {
         Err(_) => log_level.to_string(),
     };
 
-    tracing_subscriber::fmt()
+    // Try to initialize the subscriber, but don't panic if it's already been set
+    let _ = tracing_subscriber::fmt()
         .with_env_filter(filter)
         .with_target(true)
         .with_thread_ids(true)
         .with_file(true)
         .with_line_number(true)
-        .init();
+        .try_init();
 }
 
 /// Log a start message for a significant operation
