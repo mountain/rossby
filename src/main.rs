@@ -5,24 +5,21 @@
 use axum::{routing::get, Router};
 use std::net::SocketAddr;
 use std::sync::Arc;
-use std::time::Instant;
 use tokio::signal;
 use tower_http::cors::CorsLayer;
 use tracing::info;
 
 use rossby::data_loader::load_netcdf;
 use rossby::handlers::{heartbeat_handler, image_handler, metadata_handler, point_handler};
-// Allow unused import as we might need it later
-#[allow(unused_imports)]
 use rossby::{
-    create_http_trace_layer, init_tracing, log_data_load_stats, log_error, log_operation_end,
-    log_operation_start, Config, Result, RossbyError,
+    generate_request_id, log_data_loaded, log_request_error, setup_logging, start_timed_operation,
+    Config, Result, RossbyError,
 };
 
 #[tokio::main]
 async fn main() -> Result<()> {
-    // Initialize tracing with default level first
-    init_tracing("info");
+    // Initialize logging with default configuration
+    setup_logging()?;
 
     info!(
         version = env!("CARGO_PKG_VERSION"),
@@ -30,24 +27,33 @@ async fn main() -> Result<()> {
     );
 
     // Load configuration
-    let startup_time = Instant::now();
-    log_operation_start("config_load", None);
+    let _guard = start_timed_operation("config_load", None);
     let (config, netcdf_path) = Config::load().inspect_err(|e| {
-        log_error(e, "Failed to load configuration");
+        log_request_error(
+            e,
+            "startup",
+            &generate_request_id(),
+            Some("Failed to load configuration"),
+        );
     })?;
-    log_operation_end("config_load", startup_time, true);
+    // _guard logs when dropped
 
     // Validate configuration
-    log_operation_start("config_validation", None);
+    let _guard = start_timed_operation("config_validation", None);
     config.validate().inspect_err(|e| {
-        log_error(e, "Configuration validation failed");
+        log_request_error(
+            e,
+            "startup",
+            &generate_request_id(),
+            Some("Configuration validation failed"),
+        );
     })?;
-    log_operation_end("config_validation", startup_time, true);
+    // _guard logs when dropped
 
-    // Re-initialize tracing with configured level
+    // Set log level from config if not already set via environment
     if std::env::var("RUST_LOG").is_err() {
         std::env::set_var("RUST_LOG", &config.log_level);
-        init_tracing(&config.log_level);
+        info!(log_level = %config.log_level, "Updated log level from config");
     }
 
     info!(
@@ -56,16 +62,25 @@ async fn main() -> Result<()> {
     );
 
     // Load NetCDF data and create application state
-    let data_load_time = Instant::now();
-    log_operation_start("data_load", Some(&netcdf_path.to_string_lossy()));
+    let _data_load_guard = start_timed_operation("data_load", Some(&netcdf_path.to_string_lossy()));
 
     let app_state = load_netcdf(&netcdf_path, config.clone()).inspect_err(|e| {
-        log_error(e, &format!("Failed to load NetCDF file: {:?}", netcdf_path));
+        log_request_error(
+            e,
+            "startup",
+            &generate_request_id(),
+            Some(&format!("Failed to load NetCDF file: {:?}", netcdf_path)),
+        );
     })?;
 
     // Validate the application state
     app_state.validate().inspect_err(|e| {
-        log_error(e, "Application state validation failed");
+        log_request_error(
+            e,
+            "startup",
+            &generate_request_id(),
+            Some("Application state validation failed"),
+        );
     })?;
 
     // Calculate approximate memory usage
@@ -75,25 +90,24 @@ async fn main() -> Result<()> {
         .fold(0, |acc, arr| acc + arr.len() * 4); // 4 bytes per f32
 
     // Log detailed information about data
-    let var_names: Vec<_> = app_state.metadata.variables.keys().collect();
-    let dim_details: String = app_state
+    let var_names: Vec<String> = app_state.metadata.variables.keys().cloned().collect();
+    let dim_details: Vec<(String, usize)> = app_state
         .metadata
         .dimensions
         .iter()
-        .map(|(name, dim)| format!("{}={}", name, dim.size))
-        .collect::<Vec<_>>()
-        .join(", ");
+        .map(|(name, dim)| (name.clone(), dim.size))
+        .collect();
 
-    log_data_load_stats(
+    log_data_loaded(
         &netcdf_path.to_string_lossy(),
         var_names.len(),
-        &var_names.iter().map(|s| s.as_str()).collect::<Vec<_>>(),
+        &var_names,
         app_state.metadata.dimensions.len(),
         &dim_details,
-        total_memory,
+        total_memory / (1024 * 1024), // Convert to MB
     );
 
-    log_operation_end("data_load", data_load_time, true);
+    // _data_load_guard logs when dropped
 
     // Wrap in Arc for sharing
     let state = Arc::new(app_state);
@@ -129,15 +143,16 @@ async fn main() -> Result<()> {
 
     // Start the server
     let listener = tokio::net::TcpListener::bind(addr).await.map_err(|e| {
-        log_error(
-            &RossbyError::Server {
-                message: format!("Failed to bind to address: {}", e),
-            },
-            &format!("Failed to bind to address: {}", addr),
-        );
-        RossbyError::Server {
+        let error = RossbyError::Server {
             message: format!("Failed to bind to address: {}", e),
-        }
+        };
+        log_request_error(
+            &error,
+            "startup",
+            &generate_request_id(),
+            Some(&format!("Failed to bind to address: {}", addr)),
+        );
+        error
     })?;
 
     // Set up graceful shutdown

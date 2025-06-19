@@ -9,7 +9,7 @@ use std::time::{Duration, Instant, SystemTime};
 use tracing::{debug, info};
 use uuid::Uuid;
 
-use crate::logging::{generate_request_id, log_timed_operation};
+use crate::logging::generate_request_id;
 use crate::state::AppState;
 
 /// Static server ID generated at compile time
@@ -82,13 +82,11 @@ pub async fn heartbeat_handler(State(state): State<Arc<AppState>>) -> Json<Heart
     );
 
     // Get memory usage (platform-dependent)
-    let memory_usage = log_timed_operation("get_memory_usage", get_memory_usage);
-    let available_memory = log_timed_operation("get_available_memory", get_available_memory);
+    let memory_usage = get_memory_usage();
+    let available_memory = get_available_memory();
 
     // Calculate approximate memory used by the dataset
-    let data_memory = log_timed_operation("calculate_data_memory", || {
-        calculate_data_memory_usage(&state)
-    });
+    let data_memory = calculate_data_memory_usage(&state);
 
     debug!(
         memory_usage_mb = memory_usage.map(|b| b / (1024 * 1024)),

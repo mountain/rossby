@@ -31,7 +31,7 @@ pub mod state;
 pub use config::Config;
 pub use error::{Result, RossbyError};
 pub use logging::{
-    create_http_trace_layer, generate_request_id, init_tracing, log_data_load_stats, log_error,
-    log_operation_end, log_operation_start, log_request_error, log_timed_operation,
+    generate_request_id, log_data_loaded, log_request_error, log_request_success,
+    log_timed_operation, setup_logging, start_timed_operation, TimedOperationGuard,
 };
 pub use state::{AppState, AttributeValue, Dimension, Metadata, Variable};

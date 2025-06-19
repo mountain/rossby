@@ -11,6 +11,7 @@ use axum::{
 use image::{ImageBuffer, RgbaImage};
 use ndarray::ArrayView2;
 use serde::Deserialize;
+use std::collections::HashMap;
 use std::io::Cursor;
 use std::sync::Arc;
 use std::time::Instant;
@@ -36,6 +37,7 @@ const DEFAULT_FORMAT: &str = "png";
 
 /// Query parameters for image endpoint
 #[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct ImageQuery {
     /// Variable name to render
     pub var: String,
@@ -45,6 +47,10 @@ pub struct ImageQuery {
     pub time: Option<f64>,
     /// Raw time index (preferred over time_index, used by experts)
     pub __time_index: Option<usize>,
+    /// Level/pressure value (for 3D+ data)
+    pub level: Option<f64>,
+    /// Raw level index
+    pub __level_index: Option<usize>,
     /// Bounding box as "min_lon,min_lat,max_lon,max_lat"
     pub bbox: Option<String>,
     /// Image width in pixels
@@ -69,6 +75,9 @@ pub struct ImageQuery {
     pub coastlines: Option<bool>,
     /// Whether to enhance pole regions to reduce distortion
     pub enhance_poles: Option<bool>,
+    /// Extra fields for arbitrary dimension values and indices
+    #[serde(flatten)]
+    pub extra: HashMap<String, serde_json::Value>,
 }
 
 // Note: parse_bbox function now imported from colormaps::geoutil
@@ -148,10 +157,10 @@ fn generate_image(
             // Map image coordinates to data coordinates (fractional indices)
             // The previous fix corrected the upside-down issue but introduced left-right flipping
             // We need to use direct mapping for both lat and lon for proper orientation
-            
+
             // For longitude (x): direct mapping (left-to-right)
             let data_x = x as f64 * (data_width - 1) as f64 / (width - 1) as f64;
-            
+
             // For latitude (y): direct mapping (don't invert)
             let data_y = y as f64 * (data_height - 1) as f64 / (height - 1) as f64;
 
@@ -183,6 +192,13 @@ pub async fn image_handler(
     State(state): State<Arc<AppState>>,
     Query(params): Query<ImageQuery>,
 ) -> Response {
+    // Include all query parameters in the log for diagnostic purposes
+    debug!(
+        endpoint = "/image",
+        request_id = %generate_request_id(),
+        query_params = ?params,
+        "Received image request with all parameters"
+    );
     let request_id = generate_request_id();
     let start_time = Instant::now();
 
@@ -476,15 +492,114 @@ fn generate_image_response(state: Arc<AppState>, params: &ImageQuery) -> Result<
         state.get_coordinate_checked("latitude")?
     };
 
-    // Get data for the specified time slice with adjusted coordinates
-    // Note: We need to handle dateline crossing before we slice the data
-    let mut data = state.get_data_slice(
+    // Extract all dimension values from the query parameters
+    // This includes explicitly defined parameters like time, level
+    // as well as any extra dimensions in the flattened HashMap
+    let mut dim_indices = HashMap::new();
+
+    // Handle explicit time dimension
+    if let Some(raw_index) = params.__time_index {
+        // Raw index takes precedence
+        dim_indices.insert("time".to_string(), raw_index);
+    } else if let Some(time_val) = params.time {
+        // Physical value - convert to index
+        match state.find_coordinate_index_exact("time", time_val) {
+            Ok(idx) => {
+                dim_indices.insert("time".to_string(), idx);
+            }
+            Err(_) => {
+                // Fall back to closest match or error
+                let idx = state.find_coordinate_index("time", time_val)?;
+                dim_indices.insert("time".to_string(), idx);
+            }
+        }
+    } else if let Some(time_idx) = params.time_index {
+        // Legacy time_index
+        dim_indices.insert("time".to_string(), time_idx);
+    }
+
+    // Handle explicit level dimension
+    if let Some(raw_index) = params.__level_index {
+        dim_indices.insert("level".to_string(), raw_index);
+    } else if let Some(level_val) = params.level {
+        // Try to find with common level dimension names
+        let level_names = ["level", "lev", "plev", "pressure", "height"];
+
+        for &level_name in &level_names {
+            if let Ok(idx) = state.find_coordinate_index_exact(level_name, level_val) {
+                dim_indices.insert(level_name.to_string(), idx);
+                break;
+            } else if let Ok(idx) = state.find_coordinate_index(level_name, level_val) {
+                dim_indices.insert(level_name.to_string(), idx);
+                break;
+            }
+        }
+    }
+
+    // Process any additional dimensions from the flattened extra HashMap
+    for (key, value) in &params.extra {
+        // Skip standard parameters we've already processed
+        if [
+            "var",
+            "time_index",
+            "time",
+            "__time_index",
+            "level",
+            "__level_index",
+            "bbox",
+            "width",
+            "height",
+            "colormap",
+            "interpolation",
+            "format",
+            "center",
+            "wrap_longitude",
+            "resampling",
+            "grid",
+            "coastlines",
+            "enhance_poles",
+        ]
+        .contains(&key.as_str())
+        {
+            continue;
+        }
+
+        // Check if this is a raw index parameter (starts with __)
+        if key.starts_with("__") && key.ends_with("_index") {
+            let dim_name = key.trim_start_matches("__").trim_end_matches("_index");
+            if let Some(index) = value.as_u64() {
+                dim_indices.insert(dim_name.to_string(), index as usize);
+            }
+            continue;
+        }
+
+        // Otherwise treat as a physical value and try to find the corresponding dimension
+        if let Some(val) = value.as_f64() {
+            // Try with common dimension prefixes/patterns
+            let dim_name = key;
+            if let Ok(idx) = state.find_coordinate_index_exact(dim_name, val) {
+                dim_indices.insert(dim_name.to_string(), idx);
+            } else if let Ok(idx) = state.find_coordinate_index(dim_name, val) {
+                dim_indices.insert(dim_name.to_string(), idx);
+            }
+        }
+    }
+
+    // Debug log all the dimension indices we're using
+    debug!(
+        var_name = %var_name,
+        dimensions = ?dim_indices,
+        "Using these dimension indices for slicing"
+    );
+
+    // Get data slice for the specified dimensions and spatial bounds
+    let mut data = state.get_data_slice_with_dims(
         &var_name,
-        time_index,
         adj_min_lon,
         adj_min_lat,
         adj_max_lon,
         adj_max_lat,
+        &dim_indices,
     )?;
 
     // Handle dateline crossing by duplicating data if needed

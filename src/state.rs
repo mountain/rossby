@@ -335,14 +335,15 @@ impl AppState {
     }
 
     /// Extract a 2D data slice for a variable at a given time and spatial bounds
-    pub fn get_data_slice(
+    /// with support for additional dimensions
+    pub fn get_data_slice_with_dims(
         &self,
         var_name: &str,
-        time_index: usize,
         min_lon: f32,
         min_lat: f32,
         max_lon: f32,
         max_lat: f32,
+        dim_indices: &HashMap<String, usize>,
     ) -> Result<Array<f32, ndarray::Ix2>> {
         // Get the variable data
         let var_data = self.get_variable_checked(var_name)?;
@@ -351,30 +352,27 @@ impl AppState {
         let var_meta = self.get_variable_metadata_checked(var_name)?;
         let dimensions = &var_meta.dimensions;
 
-        // Find the indices for lat, lon, and time in the dimensions
-        let mut time_dim_idx = None;
-        let mut lat_dim_idx = None;
-        let mut lon_dim_idx = None;
+        // Find the indices for lat and lon in the dimensions
+        let mut lat_dim_idx_opt = None;
+        let mut lon_dim_idx_opt = None;
 
         for (i, dim) in dimensions.iter().enumerate() {
-            if dim == "time" {
-                time_dim_idx = Some(i);
-            } else if dim == "lat" || dim == "latitude" {
-                lat_dim_idx = Some(i);
+            if dim == "lat" || dim == "latitude" {
+                lat_dim_idx_opt = Some(i);
             } else if dim == "lon" || dim == "longitude" {
-                lon_dim_idx = Some(i);
+                lon_dim_idx_opt = Some(i);
             }
         }
 
         // Ensure we have lat and lon dimensions
-        let lat_dim_idx = lat_dim_idx.ok_or_else(|| RossbyError::DataNotFound {
+        let lat_dim_idx = lat_dim_idx_opt.ok_or_else(|| RossbyError::DataNotFound {
             message: format!(
                 "Variable {} does not have a latitude dimension (looking for 'lat' or 'latitude')",
                 var_name
             ),
         })?;
 
-        let lon_dim_idx = lon_dim_idx.ok_or_else(|| RossbyError::DataNotFound {
+        let lon_dim_idx = lon_dim_idx_opt.ok_or_else(|| RossbyError::DataNotFound {
             message: format!("Variable {} does not have a longitude dimension (looking for 'lon' or 'longitude')", var_name),
         })?;
 
@@ -435,84 +433,141 @@ impl AppState {
             return Ok(Array::from_elem((max_lat_idx - min_lat_idx + 1, 1), 0.0));
         }
 
-        // Create a view into the data array based on the dimensions
-        if let Some(time_dim_idx) = time_dim_idx {
-            // Variable has a time dimension
-            // Create the slice info directly with indexing operations
-            if var_data.ndim() == 3 {
-                // Most common case: [time, lat, lon]
-                let slice = if time_dim_idx == 0 && lat_dim_idx == 1 && lon_dim_idx == 2 {
-                    var_data.slice(ndarray::s![
-                        time_index,
-                        min_lat_idx..=max_lat_idx,
-                        min_lon_idx..=max_lon_idx
-                    ])
-                } else if time_dim_idx == 0 && lat_dim_idx == 2 && lon_dim_idx == 1 {
-                    var_data.slice(ndarray::s![
-                        time_index,
-                        min_lon_idx..=max_lon_idx,
-                        min_lat_idx..=max_lat_idx
-                    ])
-                } else if time_dim_idx == 1 && lat_dim_idx == 0 && lon_dim_idx == 2 {
-                    var_data.slice(ndarray::s![
-                        min_lat_idx..=max_lat_idx,
-                        time_index,
-                        min_lon_idx..=max_lon_idx
-                    ])
-                } else if time_dim_idx == 1 && lat_dim_idx == 2 && lon_dim_idx == 0 {
-                    var_data.slice(ndarray::s![
-                        min_lon_idx..=max_lon_idx,
-                        time_index,
-                        min_lat_idx..=max_lat_idx
-                    ])
-                } else if time_dim_idx == 2 && lat_dim_idx == 0 && lon_dim_idx == 1 {
-                    var_data.slice(ndarray::s![
-                        min_lat_idx..=max_lat_idx,
-                        min_lon_idx..=max_lon_idx,
-                        time_index
-                    ])
-                } else {
-                    var_data.slice(ndarray::s![
-                        min_lon_idx..=max_lon_idx,
-                        min_lat_idx..=max_lat_idx,
-                        time_index
-                    ])
-                };
+        // Create a mutable clone of the data array to work with
+        let mut data_array = var_data.to_owned();
 
-                // Since we extracted a 2D slice from a 3D array, we need to convert the dimensionality
-                Ok(slice.to_owned().into_dimensionality::<ndarray::Ix2>()?)
-            } else {
-                // Handle other dimensionality cases
-                Err(RossbyError::DataNotFound {
-                    message: format!("Unsupported data dimensionality: {}", var_data.ndim()),
-                })
-            }
-        } else {
-            // Variable doesn't have a time dimension, assume it's already 2D
-            if var_data.ndim() == 2 {
-                // Assume [lat, lon] or [lon, lat]
-                let slice = if lat_dim_idx == 0 && lon_dim_idx == 1 {
-                    var_data.slice(ndarray::s![
-                        min_lat_idx..=max_lat_idx,
-                        min_lon_idx..=max_lon_idx
-                    ])
-                } else {
-                    var_data.slice(ndarray::s![
-                        min_lon_idx..=max_lon_idx,
-                        min_lat_idx..=max_lat_idx
-                    ])
-                };
+        // Track dimension indices as we go - they will change as we slice
+        // Start with the definite indices we just extracted
+        let mut current_lat_idx_opt = Some(lat_dim_idx);
+        let mut current_lon_idx_opt = Some(lon_dim_idx);
 
-                Ok(slice.to_owned())
+        // Process non-lat/lon dimensions first
+        // Sort dimensions by index in descending order so we can slice without affecting indices
+        let mut non_lat_lon_dims: Vec<(usize, String)> = dimensions
+            .iter()
+            .enumerate()
+            .filter(|(i, _)| *i != lat_dim_idx && *i != lon_dim_idx)
+            .map(|(i, name)| (i, name.clone()))
+            .collect();
+
+        // Sort in reverse order (highest index first) so we can remove dimensions without affecting indices
+        non_lat_lon_dims.sort_by(|a, b| b.0.cmp(&a.0));
+
+        // Slice each non-lat/lon dimension, with automatic removal counting
+        for (removed_count, (dim_idx, dim_name)) in non_lat_lon_dims.into_iter().enumerate() {
+            // Get the index to slice at (default to 0 if not provided)
+            let index = dim_indices.get(&dim_name).copied().unwrap_or(0);
+
+            // Use index_axis to select just the slice at the specified index
+            // Adjust the dimension index based on how many dimensions we've already removed
+            // Make sure we don't underflow when calculating the adjusted dimension index
+            let adjusted_dim_idx = if dim_idx >= removed_count {
+                dim_idx - removed_count
             } else {
-                Err(RossbyError::DataNotFound {
-                    message: format!(
-                        "Expected a 2D array without time dimension, got {}D",
-                        var_data.ndim()
-                    ),
-                })
-            }
+                // This should never happen with properly sorted indices,
+                // but we're being defensive against underflow
+                tracing::warn!(
+                    original_dim_idx = dim_idx,
+                    removed_count = removed_count,
+                    "Dimension index underflow prevented"
+                );
+                0
+            };
+            data_array = data_array.index_axis_move(ndarray::Axis(adjusted_dim_idx), index);
+
+            // Update lat/lon indices to account for the removed dimension
+            current_lat_idx_opt = current_lat_idx_opt.map(|idx| {
+                if idx > dim_idx {
+                    // If lat dimension is after this one, decrement its index
+                    // This is safe because we've already checked idx > dim_idx
+                    idx - 1
+                } else {
+                    // Otherwise, keep the same index
+                    idx
+                }
+            });
+
+            current_lon_idx_opt = current_lon_idx_opt.map(|idx| {
+                if idx > dim_idx {
+                    // If lon dimension is after this one, decrement its index
+                    // This is safe because we've already checked idx > dim_idx
+                    idx - 1
+                } else {
+                    // Otherwise, keep the same index
+                    idx
+                }
+            });
         }
+
+        // After slicing all non-lat/lon dimensions, we should have just lat and lon left
+        if data_array.ndim() != 2 {
+            return Err(RossbyError::DataNotFound {
+                message: format!(
+                    "Expected a 2D array after slicing all non-lat/lon dimensions, got {}D",
+                    data_array.ndim()
+                ),
+            });
+        }
+
+        // Now slice the lat/lon dimensions
+        // We need to determine which dimension is which in our 2D array
+        let lat_idx = current_lat_idx_opt.ok_or_else(|| RossbyError::DataNotFound {
+            message: "Lost track of latitude dimension during slicing".to_string(),
+        })?;
+
+        let lon_idx = current_lon_idx_opt.ok_or_else(|| RossbyError::DataNotFound {
+            message: "Lost track of longitude dimension during slicing".to_string(),
+        })?;
+
+        let lat_is_first = lat_idx < lon_idx;
+        let lon_is_first = lon_idx < lat_idx;
+
+        // Create a slice of the lat/lon region
+        let result = if lat_is_first {
+            // Latitude is the first dimension (rows), longitude is the second (columns)
+            data_array.slice(ndarray::s![
+                min_lat_idx..=max_lat_idx,
+                min_lon_idx..=max_lon_idx
+            ])
+        } else if lon_is_first {
+            // Longitude is the first dimension (rows), latitude is the second (columns)
+            data_array.slice(ndarray::s![
+                min_lon_idx..=max_lon_idx,
+                min_lat_idx..=max_lat_idx
+            ])
+        } else {
+            // Should not happen given our checks above
+            return Err(RossbyError::DataNotFound {
+                message: "Could not determine dimension order after slicing".to_string(),
+            });
+        };
+        // Convert the result to a 2D array and return it
+        Ok(result.to_owned().into_dimensionality::<ndarray::Ix2>()?)
+    }
+
+    /// Extract a 2D data slice for a variable at a given time and spatial bounds
+    /// This is the original implementation that calls the new get_data_slice_with_dims
+    /// with only the time dimension specified
+    pub fn get_data_slice(
+        &self,
+        var_name: &str,
+        time_index: usize,
+        min_lon: f32,
+        min_lat: f32,
+        max_lon: f32,
+        max_lat: f32,
+    ) -> Result<Array<f32, ndarray::Ix2>> {
+        // Create a HashMap with just the time dimension index
+        let mut dim_indices = HashMap::new();
+
+        // Check if this variable has a time dimension
+        let var_meta = self.get_variable_metadata_checked(var_name)?;
+        if var_meta.dimensions.contains(&"time".to_string()) {
+            dim_indices.insert("time".to_string(), time_index);
+        }
+
+        // Call the new method with the prepared dimension indices
+        self.get_data_slice_with_dims(var_name, min_lon, min_lat, max_lon, max_lat, &dim_indices)
     }
 
     /// Validate that the application state is consistent and ready for use
