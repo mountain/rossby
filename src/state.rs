@@ -249,6 +249,34 @@ impl AppState {
         Ok(closest_idx)
     }
 
+    /// Find the index of a coordinate value within its array using exact match
+    /// Returns an error if the value is not found
+    pub fn find_coordinate_index_exact(&self, dim_name: &str, value: f64) -> Result<usize> {
+        let file_specific = self.resolve_dimension(dim_name)?;
+        let coords = self.get_coordinate_checked(file_specific)?;
+
+        // Early return for empty coordinates (shouldn't happen in valid files)
+        if coords.is_empty() {
+            return Err(RossbyError::DataNotFound {
+                message: format!("Coordinate {} is empty", dim_name),
+            });
+        }
+
+        // Find the exact match
+        for (i, &coord) in coords.iter().enumerate() {
+            if (coord - value).abs() < f64::EPSILON {
+                return Ok(i);
+            }
+        }
+
+        // No exact match found
+        Err(RossbyError::PhysicalValueNotFound {
+            dimension: dim_name.to_string(),
+            value,
+            available: coords.clone(),
+        })
+    }
+
     /// Get the variable dimensions
     pub fn get_variable_dimensions(&self, var_name: &str) -> Result<Vec<String>> {
         let var_meta = self.get_variable_metadata_checked(var_name)?;

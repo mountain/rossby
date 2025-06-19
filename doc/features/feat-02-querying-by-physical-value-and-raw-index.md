@@ -52,3 +52,130 @@ This is a foundational improvement for `rossby` with immediate, significant bene
 2.  **Intuitive User Experience:** Querying by real-world values (`lon=90.0`, `plev=850`, `t=...`) is far more natural and user-friendly than working with abstract integer indices.
 3.  **Clear & Consistent Design:** The `__` prefix convention creates a clear, logical, and extensible paradigm. It cleanly separates high-level, value-based queries from low-level, index-based access.
 4.  **Lays the Groundwork:** This feature establishes the essential API foundation upon which future capabilities, such as interpolation (e.g., `_time={timevalue}`), can be built.
+
+## 4. Implementation
+
+### 4.1. API Changes
+
+The point query endpoint now supports the following parameter patterns:
+
+1. **Direct Physical Value**
+   * Specify a physical coordinate value directly: `lon=135.0`, `lat=42.5`, `time=1672531200`
+   * This is the preferred, user-friendly way to query
+
+2. **Canonical Physical Value**
+   * Prefixed canonical name with underscore: `_longitude=135.0`, `_latitude=42.5`, `_time=1672531200`
+   * Useful when the file-specific names differ from standard conventions
+
+3. **Raw Index Access**
+   * Double-underscore prefix with canonical name and _index suffix: `__longitude_index=10`, `__latitude_index=5`, `__time_index=0`
+   * For expert use when exact control over indices is needed
+
+4. **Legacy Parameters** (Deprecated)
+   * The `time_index` parameter is maintained for backward compatibility but marked as deprecated
+   * Users will see a warning in the logs when using this parameter
+
+### 4.2. Error Handling
+
+Several new error types have been added to handle the extended querying capabilities:
+
+1. **`PhysicalValueNotFound`**
+   * Returned when a specific physical value doesn't exactly match any coordinate in the array
+   * Includes the dimension name, requested value, and available values
+
+2. **`IndexOutOfBounds`**
+   * Returned when a raw index is outside the valid range for a dimension
+   * Includes the parameter name, provided value, and maximum allowed index
+
+3. **`InvalidParameter`**
+   * Used for general parameter validation errors
+   * Provides detailed messages about the expected format and options
+
+### 4.3. Implementation Details
+
+The implementation follows these key principles:
+
+1. **Clear Preference Order**
+   * When multiple parameter forms are provided, the order of precedence is:
+     1. Raw indices (most specific)
+     2. File-specific physical values
+     3. Canonical physical values
+     4. Default values (e.g., time_index=0)
+
+2. **Exact Matching for Physical Values**
+   * Physical values must match exactly (within floating-point epsilon)
+   * This is distinct from interpolation, which occurs after coordinates are resolved
+
+3. **Backward Compatibility**
+   * Legacy parameters continue to work but trigger deprecation warnings
+   * New functionality is additive and doesn't break existing client code
+
+## 5. Testing
+
+Comprehensive tests have been added to verify all aspects of the feature:
+
+1. **Physical Value Queries**
+   * Test exact matches for various dimensions
+   * Test error cases for values not present in coordinate arrays
+
+2. **Raw Index Queries**
+   * Test valid index access
+   * Test out-of-bounds error handling
+
+3. **Mixed Parameter Testing**
+   * Test combinations of different parameter types
+   * Verify precedence rules are correctly applied
+
+4. **Dimension Aliases**
+   * Test that aliases defined in configuration work correctly
+   * Test canonical name resolution
+
+5. **Backward Compatibility**
+   * Verify deprecated parameters still function as expected
+   * Check warning messages are generated appropriately
+
+## 6. Usage Examples
+
+### Example 1: Basic Physical Value Query
+
+```bash
+# Get temperature at specific lon/lat coordinates
+curl "http://127.0.0.1:8000/point?lon=135.25&lat=35.68&vars=t2m"
+# Response: {"t2m": 288.45}
+```
+
+### Example 2: Using Canonical Names
+
+```bash
+# Get multiple variables using canonical dimension names
+curl "http://127.0.0.1:8000/point?_longitude=135.25&_latitude=35.68&vars=t2m,humidity"
+# Response: {"t2m": 288.45, "humidity": 85.2}
+```
+
+### Example 3: Raw Index Access
+
+```bash
+# Expert usage with direct indices
+curl "http://127.0.0.1:8000/point?__longitude_index=32&__latitude_index=15&vars=t2m"
+# Response: {"t2m": 290.1}
+```
+
+### Example 4: Specific Time Value
+
+```bash
+# Query for a specific timestamp (Unix timestamp or ISO string depending on file)
+curl "http://127.0.0.1:8000/point?lon=135.25&lat=35.68&time=1672531200&vars=t2m"
+# Response: {"t2m": 278.9}
+```
+
+### Example 5: Mixed Parameter Types
+
+```bash
+# Mixing parameter styles (raw indices with physical values)
+curl "http://127.0.0.1:8000/point?lon=135.25&__latitude_index=15&__time_index=0&vars=t2m"
+# Response: {"t2m": 285.3}
+```
+
+## 7. Conclusion
+
+This feature significantly enhances the usability and robustness of the `rossby` API. By providing multiple, clearly defined ways to query data, it accommodates both casual users who prefer intuitive physical values and expert users who need precise control through indices. The consistent naming convention with visual distinctions between parameter types creates a self-documenting API that helps users understand the implications of their parameter choices.

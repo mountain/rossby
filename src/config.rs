@@ -8,6 +8,7 @@
 
 use clap::Parser;
 use serde::{Deserialize, Serialize};
+use std::collections::HashMap;
 use std::path::PathBuf;
 
 use crate::error::{Result, RossbyError};
@@ -75,6 +76,11 @@ pub struct DataConfig {
     /// Path to the NetCDF file
     #[serde(default)]
     pub file_path: Option<PathBuf>,
+
+    /// Dimension aliases mapping canonical names to file-specific names
+    /// For example: {"latitude": "lat", "longitude": "lon", "time": "t"}
+    #[serde(default)]
+    pub dimension_aliases: HashMap<String, String>,
 }
 
 /// Complete configuration
@@ -214,6 +220,7 @@ impl Default for DataConfig {
         Self {
             interpolation_method: default_interpolation(),
             file_path: None,
+            dimension_aliases: HashMap::new(),
         }
     }
 }

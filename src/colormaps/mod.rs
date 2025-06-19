@@ -16,5 +16,6 @@ pub use sequential::{Cividis, Inferno, Magma, Plasma, Viridis};
 
 // Re-export geography utilities
 pub use geoutil::{
-    draw_coastlines, draw_grid_lines, enhance_poles, DEFAULT_COASTLINE_COLOR, DEFAULT_GRID_COLOR,
+    adjust_for_dateline_crossing, handle_dateline_crossing_bbox, normalize_longitude, parse_bbox,
+    resample_data, MapProjection,
 };

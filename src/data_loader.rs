@@ -25,12 +25,8 @@ pub fn load_netcdf(path: &Path, config: Config) -> Result<AppState> {
     // Validate the loaded data
     validate_netcdf_data(&metadata, &data)?;
 
-    // Create the application state directly
-    let app_state = AppState {
-        config,
-        metadata,
-        data,
-    };
+    // Create the application state
+    let app_state = AppState::new(config, metadata, data);
 
     Ok(app_state)
 }

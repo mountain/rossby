@@ -28,6 +28,14 @@ pub enum RossbyError {
     #[error("Invalid coordinates: {message}")]
     InvalidCoordinates { message: String },
 
+    /// Physical value not found in coordinate array
+    #[error("Physical value not found: {dimension}={value}. Available values: {available:?}")]
+    PhysicalValueNotFound {
+        dimension: String,
+        value: f64,
+        available: Vec<f64>,
+    },
+
     /// Invalid parameter errors
     #[error("Invalid parameter: {param} - {message}")]
     InvalidParameter { param: String, message: String },
@@ -67,6 +75,14 @@ pub enum RossbyError {
     /// JSON serialization/deserialization errors
     #[error("JSON error: {0}")]
     Json(#[from] serde_json::Error),
+
+    /// Dimension not found errors
+    #[error("Dimension not found: {name}. Available dimensions: {available:?}. If using a canonical name, try using it with an underscore prefix (e.g., '_latitude') or set up dimension_aliases in config.")]
+    DimensionNotFound {
+        name: String,
+        available: Vec<String>,
+        aliases: std::collections::HashMap<String, String>,
+    },
 
     /// Server errors
     #[error("Server error: {message}")]

@@ -340,3 +340,81 @@ async fn test_image_endpoint() {
 
     assert_eq!(response.status(), 400);
 }
+
+#[tokio::test]
+async fn test_image_geography_features() {
+    // Initialize test environment
+    let addr = init_test_environment().await;
+
+    // Test different map projections
+
+    // Eurocentric view
+    let response = http_client::get(
+        &addr,
+        "/image?var=temperature&time_index=0&width=100&height=80&center=eurocentric",
+    )
+    .await
+    .expect("Failed to make request");
+    assert_eq!(response.status(), 200);
+
+    // Americas view
+    let response = http_client::get(
+        &addr,
+        "/image?var=temperature&time_index=0&width=100&height=80&center=americas",
+    )
+    .await
+    .expect("Failed to make request");
+    assert_eq!(response.status(), 200);
+
+    // Pacific view
+    let response = http_client::get(
+        &addr,
+        "/image?var=temperature&time_index=0&width=100&height=80&center=pacific",
+    )
+    .await
+    .expect("Failed to make request");
+    assert_eq!(response.status(), 200);
+
+    // Custom longitude center
+    let response = http_client::get(
+        &addr,
+        "/image?var=temperature&time_index=0&width=100&height=80&center=custom:45.0",
+    )
+    .await
+    .expect("Failed to make request");
+    assert_eq!(response.status(), 200);
+
+    // Test dateline crossing (without wrap_longitude should fail)
+    let response = http_client::get(
+        &addr,
+        "/image?var=temperature&time_index=0&width=100&height=80&bbox=170,-30,-170,30",
+    )
+    .await
+    .expect("Failed to make request");
+    assert_eq!(response.status(), 400); // Should fail without wrap_longitude
+
+    // Test dateline crossing with wrap_longitude=true
+    let response = http_client::get(
+        &addr,
+        "/image?var=temperature&time_index=0&width=100&height=80&bbox=170,-30,-170,30&wrap_longitude=true",
+    )
+    .await
+    .expect("Failed to make request");
+    assert_eq!(response.status(), 200); // Should succeed with wrap_longitude
+
+    // Test upsampling/downsampling
+    let response = http_client::get(
+        &addr,
+        "/image?var=temperature&time_index=0&width=800&height=600&resampling=bicubic",
+    )
+    .await
+    .expect("Failed to make request");
+    assert_eq!(response.status(), 200);
+
+    let bytes = response
+        .bytes()
+        .await
+        .expect("Failed to get response bytes");
+    let img = image::load_from_memory(&bytes).expect("Failed to load image from memory");
+    assert!(image_utils::assert_image_dimensions(&img, 800, 600).is_ok());
+}
