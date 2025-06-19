@@ -193,7 +193,7 @@ pub async fn image_handler(
     );
 
     // Process the request
-    match generate_image_response(state, params) {
+    match generate_image_response(state, &params) {
         Ok(response) => {
             // Log successful request
             let duration = start_time.elapsed();
@@ -248,7 +248,7 @@ pub async fn image_handler(
 }
 
 /// Helper function to generate image response
-fn generate_image_response(state: Arc<AppState>, params: ImageQuery) -> Result<Response> {
+fn generate_image_response(state: Arc<AppState>, params: &ImageQuery) -> Result<Response> {
     let operation_start = Instant::now();
 
     // Get variable name from query
