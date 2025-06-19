@@ -5,9 +5,11 @@
 use axum::{extract::State, Json};
 use serde::Serialize;
 use std::sync::Arc;
-use std::time::{Duration, SystemTime};
+use std::time::{Duration, Instant, SystemTime};
+use tracing::{debug, info};
 use uuid::Uuid;
 
+use crate::logging::{generate_request_id, log_timed_operation};
 use crate::state::AppState;
 
 /// Static server ID generated at compile time
@@ -55,6 +57,15 @@ pub struct DatasetInfo {
 
 /// Handle GET /heartbeat requests
 pub async fn heartbeat_handler(State(state): State<Arc<AppState>>) -> Json<HeartbeatResponse> {
+    let request_id = generate_request_id();
+    let start_time = Instant::now();
+
+    debug!(
+        endpoint = "/heartbeat",
+        request_id = %request_id,
+        "Processing heartbeat request"
+    );
+
     // Get current timestamp
     let now = SystemTime::now();
     let timestamp = chrono::DateTime::<chrono::Utc>::from(now)
@@ -65,12 +76,26 @@ pub async fn heartbeat_handler(State(state): State<Arc<AppState>>) -> Json<Heart
         .duration_since(*START_TIME)
         .unwrap_or(Duration::from_secs(0));
 
+    debug!(
+        uptime_seconds = uptime.as_secs(),
+        "Server uptime calculated"
+    );
+
     // Get memory usage (platform-dependent)
-    let memory_usage = get_memory_usage();
-    let available_memory = get_available_memory();
+    let memory_usage = log_timed_operation("get_memory_usage", get_memory_usage);
+    let available_memory = log_timed_operation("get_available_memory", get_available_memory);
 
     // Calculate approximate memory used by the dataset
-    let data_memory = calculate_data_memory_usage(&state);
+    let data_memory = log_timed_operation("calculate_data_memory", || {
+        calculate_data_memory_usage(&state)
+    });
+
+    debug!(
+        memory_usage_mb = memory_usage.map(|b| b / (1024 * 1024)),
+        available_memory_mb = available_memory.map(|b| b / (1024 * 1024)),
+        data_memory_mb = data_memory / (1024 * 1024),
+        "Memory statistics collected"
+    );
 
     // Prepare dataset information
     let dataset_info = DatasetInfo {
@@ -100,6 +125,18 @@ pub async fn heartbeat_handler(State(state): State<Arc<AppState>>) -> Json<Heart
         dataset: dataset_info,
         status: "healthy".to_string(),
     };
+
+    let duration = start_time.elapsed();
+    info!(
+        endpoint = "/heartbeat",
+        request_id = %request_id,
+        duration_us = duration.as_micros() as u64,
+        uptime_seconds = uptime.as_secs(),
+        memory_usage_mb = memory_usage.map(|b| b / (1024 * 1024)),
+        data_memory_mb = data_memory / (1024 * 1024),
+        variable_count = state.metadata.variables.len(),
+        "Heartbeat request successful"
+    );
 
     Json(response)
 }

@@ -13,12 +13,15 @@ use ndarray::ArrayView2;
 use serde::Deserialize;
 use std::io::Cursor;
 use std::sync::Arc;
+use std::time::Instant;
+use tracing::{debug, info};
 
 use crate::colormaps::{
     self, adjust_for_dateline_crossing, handle_dateline_crossing_bbox, parse_bbox, resample_data,
     Colormap, MapProjection,
 };
 use crate::error::{Result, RossbyError};
+use crate::logging::{generate_request_id, log_request_error};
 use crate::state::AppState;
 
 /// Default image dimensions
@@ -172,30 +175,83 @@ pub async fn image_handler(
     State(state): State<Arc<AppState>>,
     Query(params): Query<ImageQuery>,
 ) -> Response {
+    let request_id = generate_request_id();
+    let start_time = Instant::now();
+
+    // Log request parameters
+    debug!(
+        endpoint = "/image",
+        request_id = %request_id,
+        var = %params.var,
+        time_index = ?params.time_index,
+        bbox = ?params.bbox,
+        width = ?params.width,
+        height = ?params.height,
+        colormap = ?params.colormap,
+        format = ?params.format,
+        "Processing image request"
+    );
+
     // Process the request
     match generate_image_response(state, params) {
-        Ok(response) => response,
-        Err(RossbyError::InvalidVariables { names }) => (
-            StatusCode::BAD_REQUEST,
-            Json(serde_json::json!({
-                "error": format!("Invalid variable(s): [{}]", names.join(", "))
-            })),
-        )
-            .into_response(),
-        Err(error) => (
-            StatusCode::BAD_REQUEST,
-            Json(serde_json::json!({
-                "error": error.to_string()
-            })),
-        )
-            .into_response(),
+        Ok(response) => {
+            // Log successful request
+            let duration = start_time.elapsed();
+            info!(
+                endpoint = "/image",
+                request_id = %request_id,
+                duration_ms = duration.as_millis() as u64,
+                "Image generation successful"
+            );
+
+            response
+        }
+        Err(RossbyError::InvalidVariables { names }) => {
+            // Log error
+            log_request_error(
+                &RossbyError::InvalidVariables {
+                    names: names.clone(),
+                },
+                "/image",
+                &request_id,
+                Some(&format!("Invalid variables: {}", names.join(", "))),
+            );
+
+            (
+                StatusCode::BAD_REQUEST,
+                Json(serde_json::json!({
+                    "error": format!("Invalid variable(s): [{}]", names.join(", ")),
+                    "request_id": request_id
+                })),
+            )
+                .into_response()
+        }
+        Err(error) => {
+            // Log error
+            log_request_error(&error, "/image", &request_id, None);
+
+            (
+                StatusCode::BAD_REQUEST,
+                Json(serde_json::json!({
+                    "error": error.to_string(),
+                    "request_id": request_id
+                })),
+            )
+                .into_response()
+        }
     }
 }
 
 /// Helper function to generate image response
 fn generate_image_response(state: Arc<AppState>, params: ImageQuery) -> Result<Response> {
+    let operation_start = Instant::now();
+
     // Get variable name from query
-    let var_name = params.var;
+    let var_name = params.var.clone();
+    debug!(
+        var_name = %var_name,
+        "Checking variable validity"
+    );
 
     // Verify variable exists
     if !state.has_variable(&var_name) {
@@ -364,12 +420,33 @@ fn generate_image_response(state: Arc<AppState>, params: ImageQuery) -> Result<R
     }
 
     // Generate the image with the specified interpolation method
+    debug!(
+        width = width,
+        height = height,
+        data_shape = ?data.shape(),
+        resampling = %resampling,
+        "Generating image from data"
+    );
+
+    let image_gen_start = Instant::now();
     let img = generate_image(data.view(), width, height, colormap.as_ref(), resampling)?;
+
+    let image_gen_duration = image_gen_start.elapsed();
+    debug!(
+        duration_ms = image_gen_duration.as_millis() as u64,
+        "Image generation completed"
+    );
 
     // Note: Grid, coastlines, and pole enhancement features are not yet implemented
     // These will be added in a future update
 
     // Encode the image to the specified format
+    debug!(
+        format = %format,
+        "Encoding image"
+    );
+
+    let encoding_start = Instant::now();
     let mut buffer = Cursor::new(Vec::new());
 
     match format.as_str() {
@@ -388,6 +465,13 @@ fn generate_image_response(state: Arc<AppState>, params: ImageQuery) -> Result<R
         _ => unreachable!(), // We've already validated the format
     }
 
+    let encoding_duration = encoding_start.elapsed();
+    debug!(
+        format = %format,
+        encoding_duration_ms = encoding_duration.as_millis() as u64,
+        "Image encoded successfully"
+    );
+
     // Set appropriate headers
     let mut headers = HeaderMap::new();
     headers.insert(
@@ -399,6 +483,17 @@ fn generate_image_response(state: Arc<AppState>, params: ImageQuery) -> Result<R
         }
         .parse()
         .unwrap(),
+    );
+
+    // Log overall processing time
+    let total_duration = operation_start.elapsed();
+    info!(
+        var_name = %var_name,
+        format = %format,
+        width = width,
+        height = height,
+        total_duration_ms = total_duration.as_millis() as u64,
+        "Image response generated"
     );
 
     // Return the image

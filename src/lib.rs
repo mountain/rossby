@@ -25,8 +25,13 @@ pub mod data_loader;
 pub mod error;
 pub mod handlers;
 pub mod interpolation;
+pub mod logging;
 pub mod state;
 
 pub use config::Config;
 pub use error::{Result, RossbyError};
+pub use logging::{
+    create_http_trace_layer, generate_request_id, init_tracing, log_data_load_stats, log_error,
+    log_operation_end, log_operation_start, log_request_error, log_timed_operation,
+};
 pub use state::{AppState, AttributeValue, Dimension, Metadata, Variable};

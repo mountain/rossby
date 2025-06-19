@@ -10,12 +10,15 @@ use axum::{
 };
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
+use std::time::Instant;
+use tracing::{debug, info, warn};
 
 use crate::error::RossbyError;
+use crate::logging::{generate_request_id, log_request_error};
 use crate::state::AppState;
 
 /// Query parameters for point endpoint
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, Clone)]
 pub struct PointQuery {
     // File-specific physical values
     /// Longitude coordinate (file-specific name)
@@ -74,15 +77,53 @@ pub async fn point_handler(
     State(state): State<Arc<AppState>>,
     Query(params): Query<PointQuery>,
 ) -> Response {
-    match process_point_query(state, params) {
-        Ok(response) => Json(response).into_response(),
-        Err(error) => (
-            StatusCode::BAD_REQUEST,
-            Json(serde_json::json!({
-                "error": error.to_string()
-            })),
-        )
-            .into_response(),
+    let request_id = generate_request_id();
+    let start_time = Instant::now();
+
+    // Log request parameters
+    debug!(
+        endpoint = "/point",
+        request_id = %request_id,
+        lon = ?params.lon,
+        lat = ?params.lat,
+        time = ?params.time,
+        time_index = ?params.time_index,
+        vars = %params.vars,
+        interpolation = ?params.interpolation,
+        "Processing point query"
+    );
+
+    match process_point_query(state, params.clone()) {
+        Ok(response) => {
+            // Log successful request
+            let duration = start_time.elapsed();
+            info!(
+                endpoint = "/point",
+                request_id = %request_id,
+                duration_us = duration.as_micros() as u64,
+                "Point query successful"
+            );
+
+            Json(response).into_response()
+        }
+        Err(error) => {
+            // Log error
+            log_request_error(
+                &error,
+                "/point",
+                &request_id,
+                Some(&format!("vars={}", params.vars)),
+            );
+
+            (
+                StatusCode::BAD_REQUEST,
+                Json(serde_json::json!({
+                    "error": error.to_string(),
+                    "request_id": request_id
+                })),
+            )
+                .into_response()
+        }
     }
 }
 
@@ -186,7 +227,10 @@ fn process_point_query(
         time_idx = Some(idx);
     } else if let Some(idx) = params.time_index {
         // Use deprecated time_index parameter (with warning)
-        tracing::warn!(
+        warn!(
+            param = "time_index",
+            deprecated_since = "0.1.0",
+            replacement = "__time_index",
             "The 'time_index' parameter is deprecated. Please use '__time_index' instead."
         );
 

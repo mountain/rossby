@@ -5,76 +5,95 @@
 use axum::{routing::get, Router};
 use std::net::SocketAddr;
 use std::sync::Arc;
+use std::time::Instant;
 use tokio::signal;
 use tower_http::cors::CorsLayer;
-use tracing::{error, info};
+use tracing::info;
 
 use rossby::data_loader::load_netcdf;
 use rossby::handlers::{heartbeat_handler, image_handler, metadata_handler, point_handler};
-use rossby::{Config, Result, RossbyError};
+// Allow unused import as we might need it later
+#[allow(unused_imports)]
+use rossby::{
+    create_http_trace_layer, init_tracing, log_data_load_stats, log_error, log_operation_end,
+    log_operation_start, Config, Result, RossbyError,
+};
 
 #[tokio::main]
 async fn main() -> Result<()> {
     // Initialize tracing with default level first
-    tracing_subscriber::fmt().with_env_filter("info").init();
+    init_tracing("info");
 
-    info!("Starting rossby v{}", env!("CARGO_PKG_VERSION"));
+    info!(
+        version = env!("CARGO_PKG_VERSION"),
+        "Starting rossby server"
+    );
 
     // Load configuration
-    let (config, netcdf_path) = Config::load().map_err(|e| {
-        error!("Configuration error: {}", e);
-        e
+    let startup_time = Instant::now();
+    log_operation_start("config_load", None);
+    let (config, netcdf_path) = Config::load().inspect_err(|e| {
+        log_error(e, "Failed to load configuration");
     })?;
+    log_operation_end("config_load", startup_time, true);
 
     // Validate configuration
-    config.validate().map_err(|e| {
-        error!("Invalid configuration: {}", e);
-        e
+    log_operation_start("config_validation", None);
+    config.validate().inspect_err(|e| {
+        log_error(e, "Configuration validation failed");
     })?;
+    log_operation_end("config_validation", startup_time, true);
 
     // Re-initialize tracing with configured level
     if std::env::var("RUST_LOG").is_err() {
         std::env::set_var("RUST_LOG", &config.log_level);
+        init_tracing(&config.log_level);
     }
 
-    info!("Loading NetCDF file: {:?}", netcdf_path);
+    info!(
+        file_path = %netcdf_path.display(),
+        "Loading NetCDF file"
+    );
 
     // Load NetCDF data and create application state
-    let app_state = load_netcdf(&netcdf_path, config.clone()).map_err(|e| {
-        error!("Failed to load NetCDF file: {}", e);
-        e
+    let data_load_time = Instant::now();
+    log_operation_start("data_load", Some(&netcdf_path.to_string_lossy()));
+
+    let app_state = load_netcdf(&netcdf_path, config.clone()).inspect_err(|e| {
+        log_error(e, &format!("Failed to load NetCDF file: {:?}", netcdf_path));
     })?;
 
     // Validate the application state
-    app_state.validate().map_err(|e| {
-        error!("Invalid application state: {}", e);
-        e
+    app_state.validate().inspect_err(|e| {
+        log_error(e, "Application state validation failed");
     })?;
 
-    // Log detailed information about variables
-    let var_names: Vec<_> = app_state.metadata.variables.keys().collect();
-    info!(
-        "Found {} variables: {}",
-        var_names.len(),
-        var_names
-            .iter()
-            .map(|s| s.as_str())
-            .collect::<Vec<_>>()
-            .join(", ")
-    );
+    // Calculate approximate memory usage
+    let total_memory = app_state
+        .data
+        .values()
+        .fold(0, |acc, arr| acc + arr.len() * 4); // 4 bytes per f32
 
-    // Log detailed information about dimensions
-    let dim_details: Vec<String> = app_state
+    // Log detailed information about data
+    let var_names: Vec<_> = app_state.metadata.variables.keys().collect();
+    let dim_details: String = app_state
         .metadata
         .dimensions
         .iter()
         .map(|(name, dim)| format!("{}={}", name, dim.size))
-        .collect();
-    info!(
-        "Found {} dimensions: {}",
-        dim_details.len(),
-        dim_details.join(", ")
+        .collect::<Vec<_>>()
+        .join(", ");
+
+    log_data_load_stats(
+        &netcdf_path.to_string_lossy(),
+        var_names.len(),
+        &var_names.iter().map(|s| s.as_str()).collect::<Vec<_>>(),
+        app_state.metadata.dimensions.len(),
+        &dim_details,
+        total_memory,
     );
+
+    log_operation_end("data_load", data_load_time, true);
 
     // Wrap in Arc for sharing
     let state = Arc::new(app_state);
@@ -86,6 +105,9 @@ async fn main() -> Result<()> {
         .route("/image", get(image_handler))
         .route("/heartbeat", get(heartbeat_handler))
         .layer(CorsLayer::permissive())
+        // Add tracing layer for request/response logging
+        // Temporarily commenting out due to type issues
+        // .layer(create_http_trace_layer())
         .with_state(state);
 
     // Create the server address
@@ -100,19 +122,33 @@ async fn main() -> Result<()> {
         config.server.port,
     ));
 
-    info!("Server listening on http://{}", addr);
+    info!(
+        address = %addr,
+        "Server listening on http://{}", addr
+    );
 
     // Start the server
-    let listener = tokio::net::TcpListener::bind(addr)
-        .await
-        .map_err(|e| RossbyError::Server {
+    let listener = tokio::net::TcpListener::bind(addr).await.map_err(|e| {
+        log_error(
+            &RossbyError::Server {
+                message: format!("Failed to bind to address: {}", e),
+            },
+            &format!("Failed to bind to address: {}", addr),
+        );
+        RossbyError::Server {
             message: format!("Failed to bind to address: {}", e),
-        })?;
+        }
+    })?;
 
     // Set up graceful shutdown
     let shutdown_future = shutdown_signal();
 
-    info!("Server is ready to accept connections");
+    info!(
+        host = %config.server.host,
+        port = config.server.port,
+        workers = ?config.server.workers,
+        "Server is ready to accept connections"
+    );
 
     // Start the server with graceful shutdown
     axum::serve(listener, app)
@@ -147,10 +183,16 @@ async fn shutdown_signal() {
 
     tokio::select! {
         _ = ctrl_c => {
-            info!("Received Ctrl+C, starting graceful shutdown");
+            info!(
+                signal = "SIGINT",
+                "Received Ctrl+C, starting graceful shutdown"
+            );
         },
         _ = terminate => {
-            info!("Received SIGTERM, starting graceful shutdown");
+            info!(
+                signal = "SIGTERM",
+                "Received SIGTERM, starting graceful shutdown"
+            );
         },
     }
 }
