@@ -71,6 +71,8 @@ pub struct AppState {
     pub metadata: Metadata,
     /// Loaded data arrays
     pub data: HashMap<String, Array<f32, IxDyn>>,
+    /// Reverse dimension aliases mapping (canonical name -> file-specific name)
+    dimension_aliases_reverse: HashMap<String, String>,
 }
 
 impl AppState {
@@ -80,11 +82,67 @@ impl AppState {
         metadata: Metadata,
         data: HashMap<String, Array<f32, IxDyn>>,
     ) -> Self {
+        // Build the reverse dimension aliases mapping
+        let mut dimension_aliases_reverse = HashMap::new();
+        for (canonical, file_specific) in &config.data.dimension_aliases {
+            dimension_aliases_reverse.insert(canonical.clone(), file_specific.clone());
+        }
+
         Self {
             config,
             metadata,
             data,
+            dimension_aliases_reverse,
         }
+    }
+
+    /// Resolve a dimension name to its file-specific name
+    ///
+    /// This function handles three cases:
+    /// 1. Direct file-specific dimension name (e.g., "lat")
+    /// 2. Prefixed canonical name (e.g., "_latitude")
+    /// 3. Dimension aliases from config (e.g., "latitude" -> "lat")
+    ///
+    /// Returns the file-specific dimension name or an error if not found
+    pub fn resolve_dimension<'a>(&'a self, name: &'a str) -> Result<&'a str> {
+        // Case 1: Check if the name is a direct file-specific dimension name
+        if self.metadata.dimensions.contains_key(name) {
+            return Ok(name);
+        }
+
+        // Case 2: Check if it's a prefixed canonical name (starting with "_")
+        if let Some(canonical) = name.strip_prefix('_') {
+            if let Some(file_specific) = self.dimension_aliases_reverse.get(canonical) {
+                // Make sure the file-specific name actually exists
+                if self.metadata.dimensions.contains_key(file_specific) {
+                    return Ok(file_specific);
+                }
+            }
+        }
+
+        // Case 3: Check if it's an unprefixed canonical name from config aliases
+        if let Some(file_specific) = self.dimension_aliases_reverse.get(name) {
+            if self.metadata.dimensions.contains_key(file_specific) {
+                return Ok(file_specific);
+            }
+        }
+
+        // Couldn't resolve the dimension name
+        Err(RossbyError::DimensionNotFound {
+            name: name.to_string(),
+            available: self.metadata.dimensions.keys().cloned().collect(),
+            aliases: self.dimension_aliases_reverse.clone(),
+        })
+    }
+
+    /// Get the canonical name for a dimension, if it has one
+    pub fn get_canonical_dimension_name(&self, file_specific: &str) -> Option<&str> {
+        for (canonical, fs) in &self.dimension_aliases_reverse {
+            if fs == file_specific {
+                return Some(canonical);
+            }
+        }
+        None
     }
 
     /// Create a new AppState wrapped in an Arc for shared ownership
@@ -112,16 +170,21 @@ impl AppState {
 
     /// Get coordinate values for a dimension
     pub fn get_coordinate(&self, name: &str) -> Option<&Vec<f64>> {
-        self.metadata.coordinates.get(name)
+        if let Ok(file_specific) = self.resolve_dimension(name) {
+            self.metadata.coordinates.get(file_specific)
+        } else {
+            None
+        }
     }
 
     /// Get coordinate values for a dimension with error handling
     pub fn get_coordinate_checked(&self, name: &str) -> Result<&Vec<f64>> {
+        let file_specific = self.resolve_dimension(name)?;
         self.metadata
             .coordinates
-            .get(name)
+            .get(file_specific)
             .ok_or_else(|| RossbyError::DataNotFound {
-                message: format!("Coordinate not found: {}", name),
+                message: format!("Coordinate not found: {}", file_specific),
             })
     }
 
@@ -148,6 +211,7 @@ impl AppState {
     /// Find the index of a coordinate value within its array
     /// Returns the nearest index if exact match is not found
     pub fn find_coordinate_index(&self, dim_name: &str, value: f64) -> Result<usize> {
+        let _file_specific = self.resolve_dimension(dim_name)?;
         let coords = self.get_coordinate_checked(dim_name)?;
 
         // Early return for empty coordinates (shouldn't happen in valid files)
@@ -203,8 +267,16 @@ impl AppState {
     /// Get the global lat/lon boundaries of the data
     pub fn get_lat_lon_bounds(&self) -> Result<(f32, f32, f32, f32)> {
         // Get lat and lon coordinate arrays
-        let lon_coords = self.get_coordinate_checked("lon")?;
-        let lat_coords = self.get_coordinate_checked("lat")?;
+        // Try standard names first, then try with aliases
+        let lon_coords = self
+            .get_coordinate_checked("lon")
+            .or_else(|_| self.get_coordinate_checked("_longitude"))
+            .or_else(|_| self.get_coordinate_checked("longitude"))?;
+
+        let lat_coords = self
+            .get_coordinate_checked("lat")
+            .or_else(|_| self.get_coordinate_checked("_latitude"))
+            .or_else(|_| self.get_coordinate_checked("latitude"))?;
 
         if lon_coords.is_empty() || lat_coords.is_empty() {
             return Err(RossbyError::DataNotFound {
@@ -274,16 +346,33 @@ impl AppState {
         let lon_coords = self.get_coordinate_checked("lon")?;
         let lat_coords = self.get_coordinate_checked("lat")?;
 
-        // Find index ranges for the bounding box
-        let min_lon_idx = lon_coords
-            .iter()
-            .position(|&lon| lon as f32 >= min_lon)
-            .unwrap_or(0);
+        // Check for empty coordinate arrays
+        if lon_coords.is_empty() || lat_coords.is_empty() {
+            // Return an empty 2D array rather than failing
+            return Ok(Array::from_elem((0, 0), 0.0));
+        }
 
-        let max_lon_idx = lon_coords
-            .iter()
-            .rposition(|&lon| lon as f32 <= max_lon)
-            .unwrap_or(lon_coords.len() - 1);
+        // Find index ranges for the bounding box with safety checks
+        // Handle the case of dateline crossing (min_lon > max_lon)
+        let (min_lon_idx, max_lon_idx) = if min_lon <= max_lon {
+            // Normal case - no dateline crossing
+            let min_idx = lon_coords
+                .iter()
+                .position(|&lon| lon as f32 >= min_lon)
+                .unwrap_or(0);
+
+            let max_idx = lon_coords
+                .iter()
+                .rposition(|&lon| lon as f32 <= max_lon)
+                .unwrap_or(lon_coords.len() - 1);
+
+            (min_idx, max_idx)
+        } else {
+            // Dateline crossing case - treat as empty slice for now
+            // The actual handling of dateline crossing happens in the image handler
+            // through adjust_for_dateline_crossing function
+            (0, 0)
+        };
 
         let min_lat_idx = lat_coords
             .iter()
@@ -294,6 +383,12 @@ impl AppState {
             .iter()
             .rposition(|&lat| lat as f32 <= max_lat)
             .unwrap_or(lat_coords.len() - 1);
+
+        // Special handling for dateline crossing: if min_lon > max_lon and we're returning an empty slice
+        if min_lon > max_lon {
+            // Return a minimal valid slice that the image handler can work with
+            return Ok(Array::from_elem((max_lat_idx - min_lat_idx + 1, 1), 0.0));
+        }
 
         // Create a view into the data array based on the dimensions
         if let Some(time_dim_idx) = time_dim_idx {

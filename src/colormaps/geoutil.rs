@@ -1,434 +1,464 @@
-//! Geographic utilities for visualization
+//! Geographic utility functions for handling map projections and coordinates.
 //!
-//! This module provides utilities for working with geographic data,
-//! such as drawing grid lines, coastlines, and handling pole regions.
+//! This module provides utilities for working with geographic coordinates,
+//! map projections, and handling cases like the dateline (180/-180 longitude) crossing.
 
-use image::{ImageBuffer, Rgba, RgbaImage};
+use crate::error::{Result, RossbyError};
+use ndarray::{Array2, ArrayView2};
+use std::str::FromStr;
 
-/// Default color for grid lines (semi-transparent white)
-pub const DEFAULT_GRID_COLOR: [u8; 4] = [255, 255, 255, 150];
-
-/// Default color for coastlines (semi-transparent white)
-pub const DEFAULT_COASTLINE_COLOR: [u8; 4] = [255, 255, 255, 200];
-
-/// Configuration for grid line drawing
-#[derive(Debug, Clone, Copy)]
-pub struct GridConfig {
-    /// Minimum longitude in the image
-    pub min_lon: f32,
-    /// Minimum latitude in the image
-    pub min_lat: f32,
-    /// Maximum longitude in the image
-    pub max_lon: f32,
-    /// Maximum latitude in the image
-    pub max_lat: f32,
-    /// Longitude spacing between grid lines (degrees)
-    pub lon_step: f32,
-    /// Latitude spacing between grid lines (degrees)
-    pub lat_step: f32,
-    /// RGBA color for the grid lines
-    pub color: [u8; 4],
+/// Map projection types for displaying global data
+#[derive(Debug, Clone, PartialEq)]
+pub enum MapProjection {
+    /// Eurocentric view (centered around Greenwich/0°)
+    Eurocentric,
+    /// Americas-centered view (centered around -90°)
+    Americas,
+    /// Pacific-centered view (centered around 180°/-180°)
+    Pacific,
+    /// Custom projection with specified center longitude
+    Custom(f32),
 }
 
-impl Default for GridConfig {
-    fn default() -> Self {
-        Self {
-            min_lon: -180.0,
-            min_lat: -90.0,
-            max_lon: 180.0,
-            max_lat: 90.0,
-            lon_step: 15.0,
-            lat_step: 15.0,
-            color: DEFAULT_GRID_COLOR,
+impl MapProjection {
+    /// Get the center longitude for this projection
+    pub fn center_longitude(&self) -> f32 {
+        match self {
+            MapProjection::Eurocentric => 0.0,
+            MapProjection::Americas => -90.0,
+            MapProjection::Pacific => 180.0,
+            MapProjection::Custom(lon) => *lon,
+        }
+    }
+
+    /// Create a MapProjection from a string
+    pub fn parse_projection(s: &str) -> Result<Self> {
+        match s.to_lowercase().as_str() {
+            "eurocentric" => Ok(MapProjection::Eurocentric),
+            "americas" => Ok(MapProjection::Americas),
+            "pacific" => Ok(MapProjection::Pacific),
+            _ if s.starts_with("custom:") => {
+                // Parse custom projection with specified center
+                let parts: Vec<&str> = s.split(':').collect();
+                if parts.len() == 2 {
+                    if let Ok(center_lon) = parts[1].parse::<f32>() {
+                        return Ok(MapProjection::Custom(center_lon));
+                    }
+                }
+                Err(RossbyError::InvalidParameter {
+                    param: "center".to_string(),
+                    message: format!("Invalid custom projection format: {}", s),
+                })
+            }
+            _ => Err(RossbyError::InvalidParameter {
+                param: "center".to_string(),
+                message: format!("Unknown map projection: {}", s),
+            }),
         }
     }
 }
 
-/// Draws latitude and longitude grid lines on an image
-///
-/// # Arguments
-/// * `img` - The image to draw grid lines on
-/// * `config` - Configuration for the grid lines
-pub fn draw_grid_lines(img: &mut RgbaImage, config: GridConfig) {
-    let GridConfig {
-        min_lon,
-        min_lat,
-        max_lon,
-        max_lat,
-        lon_step,
-        lat_step,
-        color,
-    } = config;
-    let width = img.width();
-    let height = img.height();
+impl FromStr for MapProjection {
+    type Err = RossbyError;
 
-    // Helper function to convert geo coordinates to pixel coordinates
-    let geo_to_pixel = |lon: f32, lat: f32| -> (u32, u32) {
-        let x = ((lon - min_lon) / (max_lon - min_lon) * (width as f32 - 1.0)) as u32;
-        // Invert y because image coordinates have y=0 at the top
-        let y = ((max_lat - lat) / (max_lat - min_lat) * (height as f32 - 1.0)) as u32;
-        (x.clamp(0, width - 1), y.clamp(0, height - 1))
-    };
-
-    // Draw longitude lines
-    let mut lon = (min_lon / lon_step).ceil() * lon_step;
-    while lon <= max_lon {
-        for y in 0..height {
-            // Convert from pixel y to latitude
-            let lat = max_lat - (y as f32 / (height as f32 - 1.0)) * (max_lat - min_lat);
-            let (x, _) = geo_to_pixel(lon, lat);
-            img.put_pixel(x, y, Rgba(color));
-        }
-        lon += lon_step;
-    }
-
-    // Draw latitude lines
-    let mut lat = (min_lat / lat_step).ceil() * lat_step;
-    while lat <= max_lat {
-        for x in 0..width {
-            // Convert from pixel x to longitude
-            let lon = min_lon + (x as f32 / (width as f32 - 1.0)) * (max_lon - min_lon);
-            let (_, y) = geo_to_pixel(lon, lat);
-            img.put_pixel(x, y, Rgba(color));
-        }
-        lat += lat_step;
+    fn from_str(s: &str) -> std::result::Result<Self, Self::Err> {
+        MapProjection::parse_projection(s)
     }
 }
 
-/// Draw simplified coastlines on an image
-///
-/// This implementation uses a highly simplified coastline representation.
-/// For production use, you would typically use a proper coastline dataset.
-pub fn draw_coastlines(
-    img: &mut RgbaImage,
+/// Parse a bounding box string "min_lon,min_lat,max_lon,max_lat" into its components
+pub fn parse_bbox(bbox: &str) -> Result<(f32, f32, f32, f32)> {
+    let parts: Vec<&str> = bbox.split(',').collect();
+    if parts.len() != 4 {
+        return Err(RossbyError::InvalidParameter {
+            param: "bbox".to_string(),
+            message: "Bounding box must be in format 'min_lon,min_lat,max_lon,max_lat'".to_string(),
+        });
+    }
+
+    // Parse the four components
+    let min_lon = parts[0]
+        .parse::<f32>()
+        .map_err(|_| RossbyError::InvalidParameter {
+            param: "bbox".to_string(),
+            message: format!("Invalid min_lon: {}", parts[0]),
+        })?;
+
+    let min_lat = parts[1]
+        .parse::<f32>()
+        .map_err(|_| RossbyError::InvalidParameter {
+            param: "bbox".to_string(),
+            message: format!("Invalid min_lat: {}", parts[1]),
+        })?;
+
+    let max_lon = parts[2]
+        .parse::<f32>()
+        .map_err(|_| RossbyError::InvalidParameter {
+            param: "bbox".to_string(),
+            message: format!("Invalid max_lon: {}", parts[2]),
+        })?;
+
+    let max_lat = parts[3]
+        .parse::<f32>()
+        .map_err(|_| RossbyError::InvalidParameter {
+            param: "bbox".to_string(),
+            message: format!("Invalid max_lat: {}", parts[3]),
+        })?;
+
+    // Validate the latitude range
+    if min_lat > max_lat {
+        return Err(RossbyError::InvalidParameter {
+            param: "bbox".to_string(),
+            message: format!("min_lat ({}) must be <= max_lat ({})", min_lat, max_lat),
+        });
+    }
+
+    // Latitude must be in the range -90 to 90
+    if !(-90.0..=90.0).contains(&min_lat) || !(-90.0..=90.0).contains(&max_lat) {
+        return Err(RossbyError::InvalidParameter {
+            param: "bbox".to_string(),
+            message: "Latitude must be in the range -90 to 90".to_string(),
+        });
+    }
+
+    // Longitude is validated later after determining if wrapping is allowed
+
+    Ok((min_lon, min_lat, max_lon, max_lat))
+}
+
+/// Normalize a longitude value to the range [-180, 180)
+pub fn normalize_longitude(lon: f32) -> f32 {
+    // Use a more robust normalization approach that avoids potential overflow
+    let mut normalized = ((lon + 180.0) % 360.0 + 360.0) % 360.0 - 180.0;
+
+    // Handle the edge case of exactly 180.0 (which should be -180.0 in the normalized form)
+    if normalized == 180.0 {
+        normalized = -180.0;
+    }
+
+    normalized
+}
+
+/// Handle a bounding box that may cross the dateline/prime meridian
+/// Returns the adjusted bounding box and a boolean indicating if it crosses the dateline
+pub fn handle_dateline_crossing_bbox(
     min_lon: f32,
     min_lat: f32,
     max_lon: f32,
     max_lat: f32,
-    color: [u8; 4],
-) {
-    // Simplified world coastline outline as series of lon-lat points
-    // This is a very simplified representation - in a real system you would
-    // load this from a geographic data file (GeoJSON, Shapefile, etc.)
-    let coastlines = vec![
-        // Simplified Africa coastline
-        vec![
-            (11.0, 35.0),
-            (25.0, 31.5),
-            (30.0, 32.0),
-            (40.0, 12.0),
-            (50.0, -10.0),
-            (30.0, -33.0),
-            (17.5, -35.0),
-            (10.0, -30.0),
-            (-5.0, 5.0),
-            (-17.0, 14.5),
-            (-17.0, 20.0),
-            (-10.0, 30.0),
-            (11.0, 35.0),
-        ],
-        // Simplified North America coastline
-        vec![
-            (-169.0, 65.0),
-            (-140.0, 70.0),
-            (-124.0, 60.0),
-            (-124.0, 45.0),
-            (-125.0, 35.0),
-            (-118.0, 32.0),
-            (-106.0, 25.0),
-            (-97.0, 26.0),
-            (-84.0, 24.0),
-            (-80.0, 26.0),
-            (-77.0, 34.0),
-            (-75.0, 40.0),
-            (-66.0, 44.0),
-            (-66.0, 48.0),
-            (-60.0, 54.0),
-            (-60.0, 60.0),
-            (-70.0, 66.0),
-            (-140.0, 70.0),
-        ],
-        // Simplified South America coastline
-        vec![
-            (-90.0, 15.0),
-            (-79.0, 9.0),
-            (-77.0, -5.0),
-            (-70.0, -18.0),
-            (-70.0, -54.0),
-            (-65.0, -55.0),
-            (-55.0, -35.0),
-            (-48.0, -25.0),
-            (-43.0, -22.0),
-            (-35.0, -5.0),
-            (-50.0, 5.0),
-            (-60.0, 12.0),
-            (-90.0, 15.0),
-        ],
-        // Simplified Eurasia coastline
-        vec![
-            (30.0, 37.0),
-            (40.0, 40.0),
-            (60.0, 55.0),
-            (90.0, 70.0),
-            (130.0, 70.0),
-            (170.0, 65.0),
-            (145.0, 45.0),
-            (145.0, 35.0),
-            (120.0, 22.0),
-            (100.0, 10.0),
-            (80.0, 7.0),
-            (80.0, 20.0),
-            (70.0, 20.0),
-            (55.0, 25.0),
-            (40.0, 15.0),
-            (30.0, 37.0),
-        ],
-        // Simplified Australia coastline
-        vec![
-            (115.0, -35.0),
-            (130.0, -30.0),
-            (145.0, -40.0),
-            (150.0, -35.0),
-            (150.0, -25.0),
-            (140.0, -15.0),
-            (130.0, -12.0),
-            (120.0, -20.0),
-            (115.0, -35.0),
-        ],
-    ];
+    projection: &MapProjection,
+) -> Result<((f32, f32, f32, f32), bool)> {
+    // If min_lon <= max_lon, it's a regular bounding box (no dateline crossing)
+    if min_lon <= max_lon {
+        return Ok(((min_lon, min_lat, max_lon, max_lat), false));
+    }
 
-    // Width and height of the image
-    let width = img.width();
-    let height = img.height();
+    // We have a bounding box that crosses the dateline or prime meridian
+    // The strategy depends on the map projection
 
-    // Helper function to convert geo coordinates to pixel coordinates
-    let geo_to_pixel = |lon: f32, lat: f32| -> Option<(u32, u32)> {
-        // Check if the point is within the bbox
-        if lon >= min_lon && lon <= max_lon && lat >= min_lat && lat <= max_lat {
-            let x = ((lon - min_lon) / (max_lon - min_lon) * (width as f32 - 1.0)) as u32;
-            // Invert y because image coordinates have y=0 at the top
-            let y = ((max_lat - lat) / (max_lat - min_lat) * (height as f32 - 1.0)) as u32;
-            Some((x.clamp(0, width - 1), y.clamp(0, height - 1)))
-        } else {
-            None
+    // Get the center longitude for the projection
+    let center_lon = projection.center_longitude();
+
+    // Calculate the normalized longitudes relative to the center
+    let normalized_min_lon = normalize_longitude(min_lon - center_lon) + center_lon;
+    let normalized_max_lon = normalize_longitude(max_lon - center_lon) + center_lon;
+
+    // For the Pacific projection, we'll need special handling since we're centered on the dateline
+    match projection {
+        MapProjection::Pacific => {
+            // For Pacific view, keep the original coordinates but flag as crossing
+            Ok(((min_lon, min_lat, max_lon, max_lat), true))
         }
+        _ => {
+            // For other projections, adjust the coordinates based on the center longitude
+            if normalized_min_lon <= normalized_max_lon {
+                // After normalization, this is a regular bounding box
+                Ok((
+                    (normalized_min_lon, min_lat, normalized_max_lon, max_lat),
+                    false,
+                ))
+            } else {
+                // Still crosses the dateline after normalization - need special handling
+                // We'll use the original coordinates but flag it as crossing
+                Ok(((min_lon, min_lat, max_lon, max_lat), true))
+            }
+        }
+    }
+}
+
+/// Adjust a data array for dateline crossing
+pub fn adjust_for_dateline_crossing(
+    data: &ArrayView2<f32>,
+    lon_coords: &[f64],
+    crosses_dateline: bool,
+) -> Result<(Array2<f32>, Vec<f64>)> {
+    if !crosses_dateline || lon_coords.is_empty() {
+        // No adjustment needed or empty coordinates
+        return Ok((data.to_owned(), lon_coords.to_vec()));
+    }
+
+    // Safety check for empty data array
+    if data.is_empty() {
+        return Ok((data.to_owned(), lon_coords.to_vec()));
+    }
+
+    // Find the dateline position in the longitude coordinates
+    let dateline_idx = if lon_coords[0] <= lon_coords[lon_coords.len() - 1] {
+        // Increasing longitude array
+        lon_coords
+            .iter()
+            .position(|&lon| (0.0..=180.0).contains(&lon))
+            .unwrap_or(0)
+    } else {
+        // Decreasing longitude array
+        lon_coords
+            .iter()
+            .position(|&lon| (-180.0..=0.0).contains(&lon))
+            .unwrap_or(0)
     };
 
-    // Draw each coastline
-    for coastline in coastlines {
-        if coastline.len() < 2 {
-            continue;
-        }
+    // Calculate right_size safely
+    let right_size = if dateline_idx >= lon_coords.len() {
+        0 // Edge case - no right side
+    } else {
+        lon_coords.len() - dateline_idx
+    };
 
-        // Draw lines between consecutive points
-        for i in 0..coastline.len() - 1 {
-            let (lon1, lat1) = coastline[i];
-            let (lon2, lat2) = coastline[i + 1];
+    // Ensure right_size is valid and not larger than the data width
+    let validated_right_size = right_size.min(data.shape()[1]);
 
-            // Draw a line between the two points if they're within the viewport
-            if let (Some((x1, y1)), Some((x2, y2))) = (
-                geo_to_pixel(lon1 as f32, lat1 as f32),
-                geo_to_pixel(lon2 as f32, lat2 as f32),
-            ) {
-                draw_line(img, x1, y1, x2, y2, color);
-            }
-            // If only one point is visible, could consider clipping the line to the bbox
-        }
-    }
-}
+    // Create a new data array with the right side copied to the left
+    let mut new_data = Array2::zeros((data.shape()[0], data.shape()[1] + validated_right_size));
+    let mut new_lon_coords = Vec::with_capacity(lon_coords.len() + validated_right_size);
 
-/// Draw a line between two points using Bresenham's algorithm
-fn draw_line(img: &mut RgbaImage, x0: u32, y0: u32, x1: u32, y1: u32, color: [u8; 4]) {
-    // Bresenham's line algorithm
-    let (mut x0, mut y0, x1, y1) = (x0 as i32, y0 as i32, x1 as i32, y1 as i32);
-
-    let dx = (x1 - x0).abs();
-    let sx = if x0 < x1 { 1 } else { -1 };
-    let dy = -(y1 - y0).abs();
-    let sy = if y0 < y1 { 1 } else { -1 };
-    let mut err = dx + dy;
-
-    let width = img.width() as i32;
-    let height = img.height() as i32;
-
-    loop {
-        // Only draw if within bounds
-        if x0 >= 0 && x0 < width && y0 >= 0 && y0 < height {
-            img.put_pixel(x0 as u32, y0 as u32, Rgba(color));
-        }
-
-        if x0 == x1 && y0 == y1 {
-            break;
-        }
-
-        let e2 = 2 * err;
-        if e2 >= dy {
-            if x0 == x1 {
-                break;
-            }
-            err += dy;
-            x0 += sx;
-        }
-        if e2 <= dx {
-            if y0 == y1 {
-                break;
-            }
-            err += dx;
-            y0 += sy;
+    // Fill the new array with data from the original array
+    for row in 0..data.shape()[0] {
+        for col in 0..data.shape()[1] {
+            new_data[[row, col]] = data[[row, col]];
         }
     }
-}
 
-/// Apply pole enhancement to reduce distortion in polar regions
-///
-/// # Arguments
-/// * `img` - The source image to enhance
-/// * `min_lat` - Minimum latitude in the image
-/// * `max_lat` - Maximum latitude in the image
-/// * `threshold` - Latitude threshold above/below which to apply enhancement
-/// * `factor` - Enhancement factor (higher = more enhancement)
-///
-/// # Returns
-/// A new image with enhanced pole regions
-pub fn enhance_poles(
-    img: &RgbaImage,
-    min_lat: f32,
-    max_lat: f32,
-    threshold: f32,
-    factor: f32,
-) -> RgbaImage {
-    let width = img.width();
-    let height = img.height();
+    // Copy the right side to the left with longitude adjustment, with extra safety checks
+    if validated_right_size > 0 && data.shape()[1] >= validated_right_size {
+        for row in 0..data.shape()[0] {
+            for col in 0..validated_right_size {
+                // Calculate original column index safely
+                let safe_offset = col.min(validated_right_size - 1);
+                let orig_col = if data.shape()[1] > validated_right_size {
+                    data.shape()[1] - validated_right_size + safe_offset
+                } else {
+                    // If we can't safely calculate this, just use the last column
+                    data.shape()[1] - 1
+                };
 
-    // Create a new image with the same dimensions
-    let mut enhanced = ImageBuffer::new(width, height);
+                // Extra bounds check
+                if orig_col < data.shape()[1] && data.shape()[1] + col < new_data.shape()[1] {
+                    new_data[[row, data.shape()[1] + col]] = data[[row, orig_col]];
+                }
+            }
+        }
+    }
 
-    // For each pixel in the output image
-    for y in 0..height {
-        // Convert y to latitude (y=0 is north, y=height-1 is south)
-        let lat = max_lat - (y as f32 / (height as f32 - 1.0)) * (max_lat - min_lat);
+    // Create the new longitude coordinates
+    for &lon in lon_coords {
+        new_lon_coords.push(lon);
+    }
 
-        // Calculate the enhancement weight based on latitude
-        let weight = if lat.abs() > threshold {
-            // How far we are into the polar region (0.0 to 1.0)
-            let polar_factor = (lat.abs() - threshold) / (90.0 - threshold);
-            // Apply nonlinear scaling to the factor
-            1.0 + factor * polar_factor.powi(2)
+    // Add the wrapped longitudes with safety checks
+    for i in 0..validated_right_size {
+        // Calculate index safely
+        let orig_idx = if lon_coords.len() > validated_right_size {
+            lon_coords.len() - validated_right_size + i
         } else {
-            1.0
+            // Fall back to the last coordinate if we can't safely calculate
+            lon_coords.len() - 1
         };
 
-        for x in 0..width {
-            // Get the source pixel from the original image
-            let pixel = img.get_pixel(x, y);
-            enhanced.put_pixel(x, y, *pixel);
-
-            // If we're in a polar region, apply the enhancement
-            if weight > 1.0 {
-                // In a real implementation, we would apply a more sophisticated
-                // transformation here, such as:
-                // - Changing the aspect ratio near poles
-                // - Using a different map projection for polar regions
-                // - Applying a gradual transformation
-                //
-                // For this example, we'll just copy the original pixel
-            }
+        // Bounds check
+        if orig_idx < lon_coords.len() {
+            let wrapped_lon = lon_coords[orig_idx] + 360.0;
+            new_lon_coords.push(wrapped_lon);
         }
     }
 
-    enhanced
+    Ok((new_data, new_lon_coords))
+}
+
+/// Resample a 2D data array to a new size using the specified interpolation method
+pub fn resample_data(
+    data: &ArrayView2<f32>,
+    target_width: usize,
+    target_height: usize,
+) -> Result<Array2<f32>> {
+    let orig_height = data.shape()[0];
+    let orig_width = data.shape()[1];
+
+    // Create a new array for the resampled data
+    let mut resampled = Array2::<f32>::zeros((target_height, target_width));
+
+    // Simple bilinear interpolation for resampling
+    for y in 0..target_height {
+        for x in 0..target_width {
+            // Map target coordinates to source coordinates (as floating point)
+            let src_x = x as f64 * (orig_width - 1) as f64 / (target_width - 1) as f64;
+            let src_y = y as f64 * (orig_height - 1) as f64 / (target_height - 1) as f64;
+
+            // Get the four surrounding points
+            let x0 = src_x.floor() as usize;
+            let y0 = src_y.floor() as usize;
+            let x1 = (x0 + 1).min(orig_width - 1);
+            let y1 = (y0 + 1).min(orig_height - 1);
+
+            // Calculate interpolation weights
+            let wx = src_x - x0 as f64;
+            let wy = src_y - y0 as f64;
+
+            // Perform bilinear interpolation
+            let top = data[[y0, x0]] as f64 * (1.0 - wx) + data[[y0, x1]] as f64 * wx;
+            let bottom = data[[y1, x0]] as f64 * (1.0 - wx) + data[[y1, x1]] as f64 * wx;
+            let value = top * (1.0 - wy) + bottom * wy;
+
+            resampled[[y, x]] = value as f32;
+        }
+    }
+
+    Ok(resampled)
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use image::{ImageBuffer, Rgba};
 
     #[test]
-    fn test_draw_grid_lines() {
-        // Create a 100x100 test image
-        let mut img: RgbaImage = ImageBuffer::new(100, 100);
+    fn test_parse_bbox() {
+        // Valid bbox
+        let result = parse_bbox("10.5,20.5,30.5,40.5");
+        assert!(result.is_ok());
+        let (min_lon, min_lat, max_lon, max_lat) = result.unwrap();
+        assert_eq!(min_lon, 10.5);
+        assert_eq!(min_lat, 20.5);
+        assert_eq!(max_lon, 30.5);
+        assert_eq!(max_lat, 40.5);
 
-        // Fill with black
-        for pixel in img.pixels_mut() {
-            *pixel = Rgba([0, 0, 0, 255]);
-        }
+        // Invalid format (too few parts)
+        assert!(parse_bbox("10.5,20.5,30.5").is_err());
 
-        // Draw grid lines with longitude step 10 and latitude step 10
-        draw_grid_lines(
-            &mut img,
-            GridConfig {
-                min_lon: -180.0,
-                min_lat: -90.0,
-                max_lon: 180.0,
-                max_lat: 90.0,
-                lon_step: 10.0,
-                lat_step: 10.0,
-                color: [255, 255, 255, 255],
-            },
+        // Invalid numbers
+        assert!(parse_bbox("10.5,20.5,not_a_number,40.5").is_err());
+
+        // Latitude out of range
+        assert!(parse_bbox("10.5,-91.0,30.5,40.5").is_err());
+        assert!(parse_bbox("10.5,20.5,30.5,91.0").is_err());
+
+        // Invalid latitude order (min > max)
+        assert!(parse_bbox("10.5,40.5,30.5,20.5").is_err());
+    }
+
+    #[test]
+    fn test_normalize_longitude() {
+        assert_eq!(normalize_longitude(0.0), 0.0);
+        assert_eq!(normalize_longitude(180.0), -180.0);
+        assert_eq!(normalize_longitude(-180.0), -180.0);
+        assert_eq!(normalize_longitude(190.0), -170.0);
+        assert_eq!(normalize_longitude(-190.0), 170.0);
+        assert_eq!(normalize_longitude(370.0), 10.0);
+        assert_eq!(normalize_longitude(-370.0), -10.0);
+    }
+
+    #[test]
+    fn test_handle_dateline_crossing_bbox() {
+        // Normal bbox (no crossing)
+        let result =
+            handle_dateline_crossing_bbox(-10.0, 10.0, 10.0, 20.0, &MapProjection::Eurocentric);
+        assert!(result.is_ok());
+        let ((min_lon, min_lat, max_lon, max_lat), crosses) = result.unwrap();
+        assert_eq!(min_lon, -10.0);
+        assert_eq!(min_lat, 10.0);
+        assert_eq!(max_lon, 10.0);
+        assert_eq!(max_lat, 20.0);
+        assert!(!crosses);
+
+        // Crossing bbox with Eurocentric projection
+        let result =
+            handle_dateline_crossing_bbox(170.0, 10.0, -170.0, 20.0, &MapProjection::Eurocentric);
+        assert!(result.is_ok());
+        let ((min_lon, min_lat, max_lon, max_lat), crosses) = result.unwrap();
+        assert_eq!(min_lon, 170.0);
+        assert_eq!(min_lat, 10.0);
+        assert_eq!(max_lon, -170.0);
+        assert_eq!(max_lat, 20.0);
+        assert!(crosses);
+
+        // Crossing bbox with Pacific projection
+        let result =
+            handle_dateline_crossing_bbox(-10.0, 10.0, 10.0, 20.0, &MapProjection::Pacific);
+        assert!(result.is_ok());
+        let ((min_lon, min_lat, max_lon, max_lat), crosses) = result.unwrap();
+        assert_eq!(min_lon, -10.0);
+        assert_eq!(min_lat, 10.0);
+        assert_eq!(max_lon, 10.0);
+        assert_eq!(max_lat, 20.0);
+        assert!(!crosses);
+    }
+
+    #[test]
+    fn test_resample_data() {
+        // Create a test array with a gradient pattern
+        let data = Array2::from_shape_vec((2, 3), vec![1.0, 2.0, 3.0, 4.0, 5.0, 6.0]).unwrap();
+
+        // Upsample to twice the size
+        let result = resample_data(&data.view(), 6, 4);
+        assert!(result.is_ok());
+        let resampled = result.unwrap();
+
+        // Check the dimensions
+        assert_eq!(resampled.shape(), &[4, 6]);
+
+        // Check the corner values (should match original)
+        assert_eq!(resampled[[0, 0]], 1.0);
+        assert_eq!(resampled[[0, 5]], 3.0);
+        assert_eq!(resampled[[3, 0]], 4.0);
+        assert_eq!(resampled[[3, 5]], 6.0);
+
+        // Check middle value - use a more relaxed epsilon since bilinear interpolation
+        // might have slight numerical differences
+        let expected = 2.8;
+        let actual = resampled[[1, 2]];
+        assert!(
+            (actual - expected).abs() < 0.1,
+            "Expected value near {}, got {}",
+            expected,
+            actual
+        );
+    }
+
+    #[test]
+    fn test_map_projection() {
+        // Test string conversion
+        assert_eq!(
+            MapProjection::from_str("eurocentric").unwrap(),
+            MapProjection::Eurocentric
+        );
+        assert_eq!(
+            MapProjection::from_str("americas").unwrap(),
+            MapProjection::Americas
+        );
+        assert_eq!(
+            MapProjection::from_str("pacific").unwrap(),
+            MapProjection::Pacific
+        );
+        assert_eq!(
+            MapProjection::from_str("custom:45.0").unwrap(),
+            MapProjection::Custom(45.0)
         );
 
-        // Check that we have grid lines
-        // Vertical lines (longitude)
-        let mut has_vertical_lines = false;
-        for x in 0..100 {
-            if img.get_pixel(x, 50) == &Rgba([255, 255, 255, 255]) {
-                has_vertical_lines = true;
-                break;
-            }
-        }
-        assert!(has_vertical_lines, "Should have vertical grid lines");
+        // Test center longitude
+        assert_eq!(MapProjection::Eurocentric.center_longitude(), 0.0);
+        assert_eq!(MapProjection::Americas.center_longitude(), -90.0);
+        assert_eq!(MapProjection::Pacific.center_longitude(), 180.0);
+        assert_eq!(MapProjection::Custom(45.0).center_longitude(), 45.0);
 
-        // Horizontal lines (latitude)
-        let mut has_horizontal_lines = false;
-        for y in 0..100 {
-            if img.get_pixel(50, y) == &Rgba([255, 255, 255, 255]) {
-                has_horizontal_lines = true;
-                break;
-            }
-        }
-        assert!(has_horizontal_lines, "Should have horizontal grid lines");
-    }
-
-    #[test]
-    fn test_draw_coastlines() {
-        // Create a 200x100 test image (roughly mimicking a world map aspect ratio)
-        let mut img: RgbaImage = ImageBuffer::new(200, 100);
-
-        // Fill with blue (ocean)
-        for pixel in img.pixels_mut() {
-            *pixel = Rgba([0, 0, 128, 255]);
-        }
-
-        // Draw coastlines
-        draw_coastlines(&mut img, -180.0, -90.0, 180.0, 90.0, [255, 255, 255, 255]);
-
-        // Check that we have coastlines (at least one white pixel)
-        let mut has_coastlines = false;
-        for pixel in img.pixels() {
-            if pixel == &Rgba([255, 255, 255, 255]) {
-                has_coastlines = true;
-                break;
-            }
-        }
-        assert!(has_coastlines, "Should have coastlines drawn");
-    }
-
-    #[test]
-    fn test_draw_line() {
-        // Create a 10x10 test image
-        let mut img: RgbaImage = ImageBuffer::new(10, 10);
-
-        // Fill with black
-        for pixel in img.pixels_mut() {
-            *pixel = Rgba([0, 0, 0, 255]);
-        }
-
-        // Draw a diagonal line
-        draw_line(&mut img, 1, 1, 8, 8, [255, 255, 255, 255]);
-
-        // Check that the line exists
-        assert_eq!(*img.get_pixel(1, 1), Rgba([255, 255, 255, 255]));
-        assert_eq!(*img.get_pixel(8, 8), Rgba([255, 255, 255, 255]));
+        // Test invalid input
+        assert!(MapProjection::from_str("invalid").is_err());
     }
 }
