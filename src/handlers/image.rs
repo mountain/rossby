@@ -41,6 +41,8 @@ pub struct ImageQuery {
     pub var: String,
     /// Time index (0-based)
     pub time_index: Option<usize>,
+    /// Time value (alias for time_index for compatibility)
+    pub time: Option<usize>,
     /// Bounding box as "min_lon,min_lat,max_lon,max_lat"
     pub bbox: Option<String>,
     /// Image width in pixels
@@ -193,18 +195,27 @@ pub async fn image_handler(
     );
 
     // Process the request
-    match generate_image_response(state, &params) {
+    match generate_image_response(state.clone(), &params) {
         Ok(response) => {
             // Log successful request
             let duration = start_time.elapsed();
+            // Determine the actual bbox used (either from params or full domain)
+            let bbox_str = match &params.bbox {
+                Some(bbox) => bbox.clone(),
+                None => {
+                    let (min_lon, min_lat, max_lon, max_lat) = state.get_lat_lon_bounds().unwrap_or((0.0, -90.0, 360.0, 90.0));
+                    format!("{:.2},{:.2},{:.2},{:.2}", min_lon, min_lat, max_lon, max_lat)
+                }
+            };
+            
             info!(
                 endpoint = "/image",
                 request_id = %request_id,
                 var = %params.var,
-                time_index = params.time_index.unwrap_or(0),
-                bbox = ?params.bbox,
-                width = ?params.width.unwrap_or(DEFAULT_WIDTH),
-                height = ?params.height.unwrap_or(DEFAULT_HEIGHT),
+                time_index = params.time_index.or(params.time).unwrap_or(0),
+                bbox = %bbox_str,
+                width = params.width.unwrap_or(DEFAULT_WIDTH),
+                height = params.height.unwrap_or(DEFAULT_HEIGHT),
                 duration_ms = duration.as_millis() as u64,
                 "Image generation successful"
             );
@@ -278,8 +289,8 @@ fn generate_image_response(state: Arc<AppState>, params: &ImageQuery) -> Result<
         return Err(RossbyError::VariableNotSuitableForImage { name: var_name });
     }
 
-    // Get time index (default to 0)
-    let time_index = params.time_index.unwrap_or(0);
+    // Get time index (default to 0) - support both time_index and time parameters
+    let time_index = params.time_index.or(params.time).unwrap_or(0);
 
     // Check time index is in bounds
     if time_index >= state.time_dim_size() {
