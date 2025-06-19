@@ -260,12 +260,34 @@ graph TB
    - PNG/JPEG for images
    - Proper error responses
 
-### Phase 8: Better geography features (Days 15-16)
+### Phase 8: Advanced Geography Features (Days 15-16)
 
-**Goal**: Improving the /image endpoint with better geography features
-- BBox support for different global settings (Eurocentric, America-centered, Pacific-Ocean, or any customized setting): northern polar is at the above and southern polar is at bottom
-- BBox support for area spanning the equators or prime meridian
-- Upsample or downsample by data grid interpolation
+**Goal**: Enhancing the /image endpoint with comprehensive geographic visualization capabilities
+
+1. **Map Projection and BBox Improvements**:
+   - Support for different map centering options:
+     - Eurocentric (-180° to 180°)
+     - America-centered (-90° to 270°)
+     - Pacific-centered (0° to 360°)
+     - Custom longitude centering
+   - Proper handling of regions spanning the dateline or prime meridian
+   - Consistent orientation with north at the top and south at the bottom
+
+2. **Grid and Reference Features**:
+   - Dynamic grid line drawing with spacing based on viewport size
+   - Simplified coastlines for geographic context
+   - Semi-transparent overlays to maintain data visibility
+
+3. **Pole Enhancement**:
+   - Reduce distortion in polar regions
+   - Apply gradual enhancement based on latitude
+   - Preserve data accuracy while improving visualization
+
+4. **Interpolation Improvements**:
+   - Automatic selection of interpolation method based on zoom level:
+     - Bilinear for downsampling to prevent aliasing
+     - Bicubic for significant upsampling for smoother results
+   - User-selectable methods: nearest, bilinear, bicubic
 
 ### Phase 9: Integration Testing (Days 15-16)
 
