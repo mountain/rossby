@@ -146,13 +146,12 @@ fn generate_image(
     for y in 0..height {
         for x in 0..width {
             // Map image coordinates to data coordinates (fractional indices)
-            // The issue is that the orientation was incorrect (upside-down and flipped)
-            // Instead of inverting y, we need to use direct mapping for lat
-            // And we need to invert x for proper longitude mapping in many NetCDF files
-
-            // For longitude (x): invert the mapping (right-to-left)
-            let data_x = (width - 1 - x) as f64 * (data_width - 1) as f64 / (width - 1) as f64;
-
+            // The previous fix corrected the upside-down issue but introduced left-right flipping
+            // We need to use direct mapping for both lat and lon for proper orientation
+            
+            // For longitude (x): direct mapping (left-to-right)
+            let data_x = x as f64 * (data_width - 1) as f64 / (width - 1) as f64;
+            
             // For latitude (y): direct mapping (don't invert)
             let data_y = y as f64 * (data_height - 1) as f64 / (height - 1) as f64;
 
@@ -705,16 +704,16 @@ mod tests {
             rgba[0] as u32 + rgba[1] as u32 + rgba[2] as u32
         };
 
-        // Check that the image has the correct orientation with our flipped mapping:
+        // Check that the image has the correct orientation with direct mapping:
         // - Top of image (y=0) should map to south (lowest latitude, row 0 of data)
         // - Bottom of image (y=height-1) should map to north (highest latitude, row 2 of data)
-        // - Left of image (x=0) should map to east (highest longitude, column 2 of data)
-        // - Right of image (x=width-1) should map to west (lowest longitude, column 0 of data)
+        // - Left of image (x=0) should map to west (lowest longitude, column 0 of data)
+        // - Right of image (x=width-1) should map to east (highest longitude, column 2 of data)
 
-        // For correctly oriented geographic data with flipped coordinates:
-        assert!(intensity(&top_left) > intensity(&top_right)); // East to West decreases (x is flipped)
+        // For correctly oriented geographic data with direct mapping:
+        assert!(intensity(&top_left) < intensity(&top_right)); // West to East increases (direct x mapping)
         assert!(intensity(&top_left) < intensity(&bottom_left)); // South to North increases (direct y mapping)
-        assert!(intensity(&bottom_left) > intensity(&bottom_right)); // East to West decreases (x is flipped)
+        assert!(intensity(&bottom_left) < intensity(&bottom_right)); // West to East increases (direct x mapping)
         assert!(intensity(&top_right) < intensity(&bottom_right)); // South to North increases (direct y mapping)
     }
 }
