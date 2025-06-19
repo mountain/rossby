@@ -4,6 +4,8 @@
 [![Crates.io](https://img.shields.io/crates/v/rossby.svg)](https://crates.io/crates/rossby)
 [![License: MIT OR Apache-2.0](https://img.shields.io/badge/license-MIT%20OR%20Apache--2.0-blue.svg)](LICENSE)
 
+> **NOTE:** Rossby is currently in early development (v0.0.1). The API may change in future releases.
+
 **`rossby` is a blazingly fast, in-memory, NetCDF-to-API server written in Rust.**
 
 Instantly serve massive NetCDF datasets as a high-performance HTTP API for point queries and image rendering, with zero data configuration.
@@ -31,7 +33,7 @@ Scientific data is often locked away in static files like NetCDF. `rossby` liber
 Ensure you have Rust installed. Then, install `rossby` using cargo:
 ```sh
 cargo install rossby
-````
+```
 
 ### 2\. Get Sample Data
 
@@ -67,20 +69,29 @@ Open a new terminal and use `curl` to interact with your new, instant database.
 **Get Metadata:** Discover what's in the file.
 
 ```sh
-curl [http://127.0.0.1:8000/metadata](http://127.0.0.1:8000/metadata)
+curl http://127.0.0.1:8000/metadata
 ```
 
-**Get a Point Forecast:** Get the interpolated 2-meter temperature (`t2m`) for a specific location at the first time step (`time_index=0`).
+**Get a Point Forecast:** Get the interpolated 2-meter temperature (`t2m`) for a specific location.
 
+There are two ways to query points:
+
+1. Using time index (legacy method):
 ```sh
-curl "[http://127.0.0.1:8000/point?lon=139.76&lat=35.68&time_index=0&vars=t2m](http://127.0.0.1:8000/point?lon=139.76&lat=35.68&time_index=0&vars=t2m)"
+curl "http://127.0.0.1:8000/point?lon=139.76&lat=35.68&time_index=0&vars=t2m"
+# Expected Response: {"t2m": 288.45}
+```
+
+2. Using physical value (recommended):
+```sh
+curl "http://127.0.0.1:8000/point?lon=139.76&lat=35.68&time=1672531200&vars=t2m"
 # Expected Response: {"t2m": 288.45}
 ```
 
 **Get an Image:** Render an image of the `t2m` variable for a specific region and time.
 
 ```sh
-curl "[http://127.0.0.1:8000/image?var=t2m&time_index=0&bbox=120,20,150,50](http://127.0.0.1:8000/image?var=t2m&time_index=0&bbox=120,20,150,50)" -o japan_temp.png
+curl "http://127.0.0.1:8000/image?var=t2m&time_index=0&bbox=120,20,150,50" -o japan_temp.png
 # Now open the generated japan_temp.png file.
 ```
 
@@ -130,7 +141,7 @@ You can specify a config file with the `--config` flag.
 ## API Reference
 
 - **`GET /metadata`**: Returns JSON describing all variables, dimensions, and attributes of the loaded file.
-- **`GET /point`**: Returns interpolated values for one or more variables at a specific point in space-time.
+- **`GET /point`**: Returns interpolated values for one or more variables at a specific point in space-time. Supports querying by physical value or raw index.
 - **`GET /image`**: Returns a PNG/JPEG image rendering of a variable over a specified region and time.
 - **`GET /heartbeat`**: Returns server status information including uptime, memory usage, and dataset details.
   - Response includes:
@@ -160,12 +171,12 @@ You can specify a config file with the `--config` flag.
   - `wrap_longitude`: (optional) Allow bounding boxes that cross the dateline/prime meridian, defaults to false
   - `resampling`: (optional) Upsampling/downsampling quality: "nearest", "bilinear", "bicubic", or "auto", defaults to "auto" (bilinear)
 
-For full details, see the [design.md](https://www.google.com/search?q=design.md) document.
+For full details, see the documentation included in the repository.
 
 ## Building from Source
 
 ```sh
-git clone [https://github.com/your-username/rossby.git](https://github.com/your-username/rossby.git)
+git clone https://github.com/mountain/rossby.git
 cd rossby
 cargo build --release
 ./target/release/rossby --help
