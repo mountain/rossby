@@ -80,7 +80,13 @@ A static NetCDF file on disk is the single source of truth, loaded into the proc
             d. Performs a **bilinear interpolation** using the fractional parts of the grid indices as weights.
         4. Serializes the results into a JSON object.
     - **`GET /image`**:
-        1. Receives `var`, `time_index`, `bbox`, `center`, `wrap_longitude`, `resampling`, etc. as query parameters.
+        1. Receives `var`, `time_index`, `bbox`, etc. as query parameters with additional geographic visualization options:
+           - `center`: Map centering (`eurocentric`, `americas`, `pacific`, or custom longitude)
+           - `wrap_longitude`: Allow bounding boxes that cross the dateline/prime meridian
+           - `resampling`: Interpolation quality (`nearest`, `bilinear`, `bicubic`, or `auto`)
+           - `grid`: Whether to draw latitude/longitude grid lines
+           - `coastlines`: Whether to draw simplified coastlines
+           - `enhance_poles`: Whether to apply polar region distortion correction
         2. Normalizes the bounding box coordinates based on the selected map centering:
            - Eurocentric view (-180° to 180°)
            - Americas-centered view (-90° to 270°)
@@ -90,9 +96,17 @@ A static NetCDF file on disk is the single source of truth, loaded into the proc
         4. Slices the `ndarray` to get a 2D data array corresponding to the normalized `bbox`.
         5. Determines the data range (`min`, `max`) for color mapping.
         6. Creates a buffer using the `image` crate.
-        7. Applies the selected resampling method (`nearest`, `bilinear`, `bicubic`, or `auto`) for data grid interpolation.
+        7. Applies the selected resampling method for data grid interpolation, with automatic selection based on scaling factor:
+           - Downsampling by more than 2x: uses bilinear to avoid aliasing
+           - Slight downsampling: uses bilinear
+           - Slight upsampling: uses bilinear
+           - Significant upsampling (more than 2x): uses bicubic for smoother results
         8. Maps each interpolated value to a color using a colormap function.
-        9. Encodes the buffer as a PNG or JPEG and returns the binary data with the correct `Content-Type` header.
+        9. Applies requested geographic enhancements:
+           - Draws grid lines with dynamic spacing based on viewport size
+           - Draws simplified coastlines for major continents
+           - Applies pole enhancement to reduce distortion in polar regions
+        10. Encodes the buffer as a PNG or JPEG and returns the binary data with the correct `Content-Type` header.
     - **`GET /heartbeat`**:
         1. Returns a simple JSON response with server status information.
         2. Includes timestamp, uptime, server ID, and available memory.
@@ -150,7 +164,7 @@ A static NetCDF file on disk is the single source of truth, loaded into the proc
 ## 6. Future Work
 
 - **Support for more file formats:** Add readers for GRIB2, Zarr, and TileDB to broaden the tool's applicability.
-- **Advanced geographic features:** Implement map projections beyond simple longitude/latitude transformations.
+- **Advanced map projections:** Add support for more sophisticated map projections such as Mercator, Robinson, or Orthographic views.
 - **Pluggable colormaps:** Allow users to define custom colormaps for the image endpoint.
 - **Authentication:** Add an optional API key authentication layer.
 - **Caching:** For extremely large files that don't fit in RAM, implement an LRU caching mechanism for frequently accessed data chunks, moving from a pure in-memory to a hybrid model.

@@ -43,7 +43,7 @@ pub struct ImageQuery {
     pub height: Option<u32>,
     /// Colormap name (e.g., viridis, plasma, coolwarm)
     pub colormap: Option<String>,
-    /// Interpolation method for resampling
+    /// Interpolation method for resampling (deprecated, use resampling instead)
     pub interpolation: Option<String>,
     /// Output format (png or jpeg)
     pub format: Option<String>,
@@ -53,6 +53,12 @@ pub struct ImageQuery {
     pub wrap_longitude: Option<bool>,
     /// Upsampling/downsampling quality (auto, nearest, bilinear, bicubic)
     pub resampling: Option<String>,
+    /// Whether to draw grid lines on the image
+    pub grid: Option<bool>,
+    /// Whether to draw coastlines on the image
+    pub coastlines: Option<bool>,
+    /// Whether to enhance pole regions to reduce distortion
+    pub enhance_poles: Option<bool>,
 }
 
 /// Parse bounding box string into values
@@ -157,6 +163,16 @@ fn normalize_longitude(lon: f32, center: &str) -> f32 {
 ///
 /// This function normalizes the min and max longitudes based on the selected map center
 /// and handles cases where the bounding box crosses the dateline.
+///
+/// For dateline crossing (international date line, near 180°E/W):
+/// - If the bbox spans more than 330 degrees, it's considered a global request
+/// - Otherwise, it detects if the bbox crosses the dateline based on min_lon > max_lon or
+///   if after normalization the min_lon > max_lon
+/// - For crossed datelines, it returns the full longitude range for the selected center
+///
+/// For prime meridian crossing (0° longitude):
+/// - Similar to dateline but handled specifically for the prime meridian
+/// - Important for requests like viewing Africa-Europe-Asia in one view
 fn adjust_bbox_for_center(
     min_lon: f32,
     min_lat: f32,
@@ -165,6 +181,30 @@ fn adjust_bbox_for_center(
     center: &str,
     wrap_longitude: bool,
 ) -> (f32, f32, f32, f32) {
+    // Handle the global case (spanning more than 330 degrees)
+    let span = if min_lon <= max_lon {
+        max_lon - min_lon
+    } else {
+        360.0 - min_lon + max_lon
+    };
+
+    if span > 330.0 {
+        // Return the full longitude range for the selected center
+        let center_lon = match center {
+            "eurocentric" => 0.0,
+            "americas" => 90.0,
+            "pacific" => 180.0,
+            custom => custom.parse::<f32>().unwrap_or(0.0),
+        };
+
+        return (
+            center_lon - 180.0, // Minimum possible longitude
+            min_lat,
+            center_lon + 180.0, // Maximum possible longitude
+            max_lat,
+        );
+    }
+
     if !wrap_longitude {
         // Simple case - no wrapping needed
         return (
@@ -179,15 +219,17 @@ fn adjust_bbox_for_center(
     let normalized_min = normalize_longitude(min_lon, center);
     let normalized_max = normalize_longitude(max_lon, center);
 
-    // If after normalization min > max, we're crossing the dateline
-    if normalized_min > normalized_max {
+    // Check if the bbox crosses the dateline (either naturally or after normalization)
+    let crosses_dateline = min_lon > max_lon || normalized_min > normalized_max;
+
+    if crosses_dateline {
         // For data fetching, we'll need to fetch two separate regions
         // But for now, we're just adjusting the bbox to the full longitude range
         // to ensure we get all necessary data
         let center_lon = match center {
             "eurocentric" => 0.0,
-            "americas" => -90.0,
-            "pacific" => -180.0,
+            "americas" => 90.0,
+            "pacific" => 180.0,
             custom => custom.parse::<f32>().unwrap_or(0.0),
         };
 
@@ -229,7 +271,27 @@ fn generate_image(
         "nearest" => crate::interpolation::get_interpolator("nearest")?,
         "bilinear" => crate::interpolation::get_interpolator("bilinear")?,
         "bicubic" => crate::interpolation::get_interpolator("bicubic")?,
-        // Default to bilinear for "auto" or any other value
+        "auto" => {
+            // Automatically select the best interpolation method based on the scaling factor
+            let scale_x = width as f32 / data.shape()[1] as f32;
+            let scale_y = height as f32 / data.shape()[0] as f32;
+            let scale = scale_x.max(scale_y);
+
+            if scale <= 0.5 {
+                // Downsampling by more than 2x: use bilinear to avoid aliasing
+                crate::interpolation::get_interpolator("bilinear")?
+            } else if scale <= 1.0 {
+                // Slight downsampling: use bilinear
+                crate::interpolation::get_interpolator("bilinear")?
+            } else if scale <= 2.0 {
+                // Slight upsampling: use bilinear
+                crate::interpolation::get_interpolator("bilinear")?
+            } else {
+                // Significant upsampling: use bicubic for smoother results
+                crate::interpolation::get_interpolator("bicubic")?
+            }
+        }
+        // Default to bilinear for any other value
         _ => crate::interpolation::get_interpolator("bilinear")?,
     };
 
@@ -289,6 +351,13 @@ pub async fn image_handler(
     // Process the request
     match generate_image_response(state, params) {
         Ok(response) => response,
+        Err(RossbyError::InvalidVariables { names }) => (
+            StatusCode::BAD_REQUEST,
+            Json(serde_json::json!({
+                "error": format!("Invalid variable(s): [{}]", names.join(", "))
+            })),
+        )
+            .into_response(),
         Err(error) => (
             StatusCode::BAD_REQUEST,
             Json(serde_json::json!({
@@ -306,7 +375,18 @@ fn generate_image_response(state: Arc<AppState>, params: ImageQuery) -> Result<R
 
     // Verify variable exists
     if !state.has_variable(&var_name) {
-        return Err(RossbyError::VariableNotFound { name: var_name });
+        return Err(RossbyError::InvalidVariables {
+            names: vec![var_name],
+        });
+    }
+
+    // Verify variable is suitable for image rendering (must have lat and lon dimensions)
+    let var_meta = state.get_variable_metadata_checked(&var_name)?;
+    let has_lat = var_meta.dimensions.iter().any(|d| d == "lat");
+    let has_lon = var_meta.dimensions.iter().any(|d| d == "lon");
+
+    if !has_lat || !has_lon {
+        return Err(RossbyError::VariableNotSuitableForImage { name: var_name });
     }
 
     // Get time index (default to 0)
@@ -348,7 +428,12 @@ fn generate_image_response(state: Arc<AppState>, params: ImageQuery) -> Result<R
     let colormap = colormaps::get_colormap(colormap_name)?;
 
     // Get resampling method (default to auto)
-    let resampling = params.resampling.as_deref().unwrap_or("auto");
+    // Fall back to interpolation parameter for backward compatibility
+    let resampling = params
+        .resampling
+        .as_deref()
+        .or(params.interpolation.as_deref())
+        .unwrap_or("auto");
 
     // Get output format
     let format = params
@@ -374,7 +459,76 @@ fn generate_image_response(state: Arc<AppState>, params: ImageQuery) -> Result<R
     )?;
 
     // Generate the image with the specified interpolation method
-    let img = generate_image(data.view(), width, height, colormap.as_ref(), resampling)?;
+    let mut img = generate_image(data.view(), width, height, colormap.as_ref(), resampling)?;
+
+    // Draw grid lines if requested
+    if params.grid.unwrap_or(false) {
+        // Calculate appropriate grid spacing based on the bbox size
+        let lon_range = max_lon - min_lon;
+        let lat_range = max_lat - min_lat;
+
+        // Choose grid spacing dynamically:
+        // - For small areas (< 10°), use 1° spacing
+        // - For medium areas (10-45°), use 5° spacing
+        // - For large areas (45-180°), use 10° spacing
+        // - For global views, use 15° spacing
+        let lon_step = if lon_range < 10.0 {
+            1.0
+        } else if lon_range < 45.0 {
+            5.0
+        } else if lon_range < 180.0 {
+            10.0
+        } else {
+            15.0
+        };
+
+        let lat_step = if lat_range < 10.0 {
+            1.0
+        } else if lat_range < 45.0 {
+            5.0
+        } else if lat_range < 90.0 {
+            10.0
+        } else {
+            15.0
+        };
+
+        crate::colormaps::draw_grid_lines(
+            &mut img,
+            crate::colormaps::geoutil::GridConfig {
+                min_lon,
+                min_lat,
+                max_lon,
+                max_lat,
+                lon_step,
+                lat_step,
+                color: crate::colormaps::DEFAULT_GRID_COLOR,
+            },
+        );
+    }
+
+    // Draw coastlines if requested
+    if params.coastlines.unwrap_or(false) {
+        crate::colormaps::draw_coastlines(
+            &mut img,
+            min_lon,
+            min_lat,
+            max_lon,
+            max_lat,
+            crate::colormaps::DEFAULT_COASTLINE_COLOR,
+        );
+    }
+
+    // Apply pole enhancement if requested
+    if params.enhance_poles.unwrap_or(false) {
+        // Only apply pole enhancement if the image contains polar regions
+        // (latitudes above 60° north or below 60° south)
+        if min_lat < -60.0 || max_lat > 60.0 {
+            img = crate::colormaps::enhance_poles(
+                &img, min_lat, max_lat, 60.0, // threshold latitude (degrees)
+                0.5,  // enhancement factor (subtle effect)
+            );
+        }
+    }
 
     // Encode the image to the specified format
     let mut buffer = Cursor::new(Vec::new());

@@ -56,6 +56,14 @@ pub enum RossbyError {
     #[error("Image generation error: {message}")]
     ImageGeneration { message: String },
 
+    /// Invalid variable(s) errors
+    #[error("Invalid variable(s): [{names:?}]")]
+    InvalidVariables { names: Vec<String> },
+
+    /// Variable not suitable for image rendering
+    #[error("Variable {name} is not suitable for image rendering. It must be a 2D grid with latitude and longitude dimensions.")]
+    VariableNotSuitableForImage { name: String },
+
     /// JSON serialization/deserialization errors
     #[error("JSON error: {0}")]
     Json(#[from] serde_json::Error),
