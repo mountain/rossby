@@ -200,6 +200,11 @@ pub async fn image_handler(
             info!(
                 endpoint = "/image",
                 request_id = %request_id,
+                var = %params.var,
+                time_index = params.time_index.unwrap_or(0),
+                bbox = ?params.bbox,
+                width = ?params.width.unwrap_or(DEFAULT_WIDTH),
+                height = ?params.height.unwrap_or(DEFAULT_HEIGHT),
                 duration_ms = duration.as_millis() as u64,
                 "Image generation successful"
             );
@@ -489,6 +494,8 @@ fn generate_image_response(state: Arc<AppState>, params: ImageQuery) -> Result<R
     let total_duration = operation_start.elapsed();
     info!(
         var_name = %var_name,
+        time_index = time_index,
+        bbox = %format!("{:.2},{:.2},{:.2},{:.2}", min_lon, min_lat, max_lon, max_lat),
         format = %format,
         width = width,
         height = height,
