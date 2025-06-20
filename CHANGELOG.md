@@ -11,6 +11,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `/data` endpoint with Apache Arrow integration for efficient data extraction
 - Support for requesting specific data hyperslabs with custom dimension layouts
 - Maximum data points limit for preventing excessive memory usage
+- Enhanced `/metadata` endpoint to include coordinate values for each dimension
+
+### Changed
+- `/metadata` endpoint now returns coordinate values in addition to dimension names
 
 ## [0.0.1] - 2025-06-19
 

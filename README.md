@@ -150,6 +150,42 @@ Returns a JSON object describing all variables, dimensions, and attributes of th
 
 **No query parameters.**
 
+**Response Structure:**
+
+```json
+{
+  "global_attributes": {
+    // File-level attributes
+  },
+  "dimensions": {
+    "dimension_name": {
+      "name": "dimension_name",
+      "size": size_value,
+      "is_unlimited": boolean
+    },
+    // Other dimensions...
+  },
+  "variables": {
+    "variable_name": {
+      "name": "variable_name",
+      "dimensions": ["dim1", "dim2", ...],
+      "shape": [dim1_size, dim2_size, ...],
+      "attributes": {
+        // Variable-specific attributes
+      },
+      "dtype": "data_type"
+    },
+    // Other variables...
+  },
+  "coordinates": {
+    "dimension_name": [value1, value2, ...],
+    // Other dimension coordinates...
+  }
+}
+```
+
+The `coordinates` section contains the actual values for each dimension, not just their names. This is useful for applications that need to understand the coordinate ranges and spacing without making additional requests.
+
 -----
 
 ### `GET /point`

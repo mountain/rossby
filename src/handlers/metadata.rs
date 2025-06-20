@@ -27,7 +27,7 @@ pub async fn metadata_handler(State(state): State<Arc<AppState>>) -> Json<serde_
         "global_attributes": state.metadata.global_attributes,
         "dimensions": state.metadata.dimensions,
         "variables": state.metadata.variables,
-        "coordinates": state.metadata.coordinates.keys().collect::<Vec<_>>(),
+        "coordinates": state.metadata.coordinates,
     });
 
     // Log successful request
@@ -118,7 +118,7 @@ mod tests {
             "global_attributes": state.metadata.global_attributes,
             "dimensions": state.metadata.dimensions,
             "variables": state.metadata.variables,
-            "coordinates": state.metadata.coordinates.keys().collect::<Vec<_>>(),
+            "coordinates": state.metadata.coordinates,
         });
 
         // We can test the functionality directly without calling the async handler
@@ -141,8 +141,19 @@ mod tests {
         assert!(dims.get("lon").is_some());
 
         // Check the coordinates
-        let coords = json.get("coordinates").unwrap().as_array().unwrap();
-        assert!(coords.contains(&serde_json::json!("lat")));
-        assert!(coords.contains(&serde_json::json!("lon")));
+        let coords = json.get("coordinates").unwrap().as_object().unwrap();
+        assert!(coords.contains_key("lat"));
+        assert!(coords.contains_key("lon"));
+        // Check coordinate values
+        let lat_coords = coords.get("lat").unwrap().as_array().unwrap();
+        let lon_coords = coords.get("lon").unwrap().as_array().unwrap();
+        assert_eq!(
+            lat_coords,
+            &[serde_json::json!(-90.0), serde_json::json!(90.0)]
+        );
+        assert_eq!(
+            lon_coords,
+            &[serde_json::json!(-180.0), serde_json::json!(180.0)]
+        );
     }
 }
