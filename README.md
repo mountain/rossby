@@ -28,9 +28,10 @@ Scientific data is often locked away in static files like NetCDF. `rossby` liber
 
 ## Quick Start
 
-### 1. Installation
+### 1\. Installation
 
 Ensure you have Rust installed. Then, install `rossby` using cargo:
+
 ```sh
 cargo install rossby
 ```
@@ -40,8 +41,8 @@ cargo install rossby
 We'll use a sample weather forecast file for this demo.
 
 ```sh
-# a real climate data file
-wget [https://github.com/mountain/rossby/raw/refs/heads/main/tests/fixtures/2m_temperature_1982_5.625deg.nc](https://github.com/mountain/rossby/raw/refs/heads/main/tests/fixtures/2m_temperature_1982_5.625deg.nc)
+# A real climate data file
+wget https://github.com/mountain/rossby/raw/main/tests/fixtures/2m_temperature_1982_5.625deg.nc
 ```
 
 ### 3\. Run `rossby`
@@ -55,11 +56,11 @@ rossby 2m_temperature_1982_5.625deg.nc
 You should see output indicating the server has started, probably on `127.0.0.1:8000`.
 
 ```
-INFO  rossby > Loading NetCDF file: "tests/fixtures/2m_temperature_1982_5.625deg.nc"
+INFO  rossby > Loading NetCDF file: "2m_temperature_1982_5.625deg.nc"
 INFO  rossby > Found 4 variables
 INFO  rossby > Found 3 dimensions
 INFO  rossby > Data loaded successfully.
-INFO  axum::server > Listening on [http://127.0.0.1:8000](http://127.0.0.1:8000)
+INFO  axum::server > Listening on http://127.0.0.1:8000
 ```
 
 ### 4\. Query the API
@@ -72,17 +73,17 @@ Open a new terminal and use `curl` to interact with your new, instant database.
 curl http://127.0.0.1:8000/metadata
 ```
 
-**Get a Point Forecast:** Get the interpolated 2-meter temperature (`t2m`) for a specific location.
+**Get a Point Forecast:** Get the interpolated 2-meter temperature (`t2m`) for a specific location. There are two ways to query points:
 
-There are two ways to query points:
+1.  Using time index (legacy method):
 
-1. Using time index (legacy method):
 ```sh
 curl "http://127.0.0.1:8000/point?lon=139.76&lat=35.68&time_index=0&vars=t2m"
 # Expected Response: {"t2m": 288.45}
 ```
 
-2. Using physical value (recommended):
+2.  Using physical time value (recommended):
+
 ```sh
 curl "http://127.0.0.1:8000/point?lon=139.76&lat=35.68&time=1672531200&vars=t2m"
 # Expected Response: {"t2m": 288.45}
@@ -117,11 +118,10 @@ rossby --discovery-url http://discovery-service:8080/register my_data.nc
 ```
 
 **JSON Configuration:**
-
 You can specify a config file with the `--config` flag.
 `rossby --config server.json`
 
-**`server.json` example:**
+An example `server.json`:
 
 ```json
 {
@@ -140,38 +140,82 @@ You can specify a config file with the `--config` flag.
 
 ## API Reference
 
-- **`GET /metadata`**: Returns JSON describing all variables, dimensions, and attributes of the loaded file.
-- **`GET /point`**: Returns interpolated values for one or more variables at a specific point in space-time. Supports querying by physical value or raw index.
-- **`GET /image`**: Returns a PNG/JPEG image rendering of a variable over a specified region and time.
-- **`GET /heartbeat`**: Returns server status information including uptime, memory usage, and dataset details.
-  - Response includes:
-    - `server_id`: Unique identifier for this server instance
-    - `timestamp`: Current time in ISO 8601 format
-    - `uptime_seconds`: Server uptime in seconds
-    - `memory_usage_bytes`: Process memory usage (if available)
-    - `available_memory_bytes`: Available system memory (if available)
-    - `status`: Server health status ("healthy" under normal conditions)
-    - `dataset`: Object containing dataset information:
-      - `file_path`: Path to the loaded NetCDF file
-      - `variable_count`: Number of variables in the dataset
-      - `variables`: List of variable names
-      - `dimension_count`: Number of dimensions
-      - `dimensions`: List of dimension names and sizes
-      - `data_memory_bytes`: Approximate memory usage of the dataset
-      
-- **`GET /image`**: Returns a PNG/JPEG image rendering of a variable over a specified region and time.
-  - `var`: (required) Variable name to render
-  - `time_index`: (optional) Time index, defaults to 0
-  - `bbox`: (optional) Bounding box as "min_lon,min_lat,max_lon,max_lat"
-  - `width`: (optional) Image width in pixels, defaults to 800
-  - `height`: (optional) Image height in pixels, defaults to 600
-  - `colormap`: (optional) Colormap name (e.g., viridis, plasma, coolwarm), defaults to "viridis"
-  - `format`: (optional) Output format: "png" or "jpeg", defaults to "png"
-  - `center`: (optional) Map centering: "eurocentric" (-180° to 180°), "americas" (-90° to 270°), "pacific" (0° to 360°), or a custom longitude value, defaults to "eurocentric"
-  - `wrap_longitude`: (optional) Allow bounding boxes that cross the dateline/prime meridian, defaults to false
-  - `resampling`: (optional) Upsampling/downsampling quality: "nearest", "bilinear", "bicubic", or "auto", defaults to "auto" (bilinear)
+A detailed reference for the available HTTP endpoints.
 
-For full details, see the documentation included in the repository.
+-----
+
+### `GET /metadata`
+
+Returns a JSON object describing all variables, dimensions, and attributes of the loaded NetCDF file.
+
+**No query parameters.**
+
+-----
+
+### `GET /point`
+
+Returns interpolated values for one or more variables at a specific point in space-time.
+
+**Query Parameters:**
+
+- `lon`: (required) Longitude of the query point.
+- `lat`: (required) Latitude of the query point.
+- `vars`: (required) Comma-separated list of variable names to query (e.g., `t2m,u10`).
+- `time` or `time_index`: (required) Specify the time for the query.
+  - `time`: The physical time value (e.g., a time value like Unix timestamp or others specified by the metadata). Recommended method.
+  - `time_index`: The integer index of the time dimension.
+
+-----
+
+### `GET /image`
+
+Returns a PNG or JPEG image rendering of a single variable over a specified region and time.
+
+**Query Parameters:**
+
+- `var`: (required) The variable name to render.
+- `time_index`: (optional) The integer index of the time dimension. Defaults to `0`.
+- `bbox`: (optional) Bounding box as a string `"min_lon,min_lat,max_lon,max_lat"`. If not provided, the entire spatial domain is rendered.
+- `width`: (optional) Image width in pixels. Defaults to `800`.
+- `height`: (optional) Image height in pixels. Defaults to `600`.
+- `colormap`: (optional) Colormap name (e.g., `viridis`, `plasma`, `coolwarm`). Defaults to `"viridis"`.
+- `format`: (optional) Output image format. Can be `"png"` or `"jpeg"`. Defaults to `"png"`.
+- `center`: (optional) Adjusts the map's longitudinal center. Can be `"eurocentric"` (-180° to 180°), `"americas"` (-90° to 270°), `"pacific"` (0° to 360°), or a custom longitude value. Defaults to `"eurocentric"`.
+- `wrap_longitude`: (optional) Set to `true` to allow bounding boxes that cross the dateline/prime meridian. Defaults to `false`.
+- `resampling`: (optional) The resampling filter for upsampling/downsampling. Can be `"nearest"`, `"bilinear"`, `"bicubic"`, or `"auto"`. Defaults to `"auto"` (bilinear for upsampling, bicubic for downsampling).
+
+-----
+
+### `GET /heartbeat`
+
+Returns a JSON object with server status, memory usage, and dataset information. Useful for monitoring and service health checks.
+
+**No query parameters.**
+
+**Example Response Body:**
+
+```json
+{
+  "server_id": "unique-server-id-123",
+  "timestamp": "2025-06-20T13:30:00Z",
+  "uptime_seconds": 3600,
+  "memory_usage_bytes": 512000000,
+  "available_memory_bytes": 16000000000,
+  "status": "healthy",
+  "dataset": {
+    "file_path": "/path/to/data.nc",
+    "variable_count": 4,
+    "variables": ["t2m", "u10", "v10", "msl"],
+    "dimension_count": 3,
+    "dimensions": {
+      "time": 744,
+      "latitude": 32,
+      "longitude": 64
+    },
+    "data_memory_bytes": 450000000
+  }
+}
+```
 
 ## Building from Source
 
@@ -188,10 +232,10 @@ cargo build --release
 
 This project uses GitHub Actions for continuous integration. The CI pipeline runs the following checks on every push and pull request:
 
-1. `cargo check` - Verifies the code compiles without errors
-2. `cargo test` - Runs all tests to ensure they pass
-3. `cargo clippy` - Performs static analysis to catch common mistakes
-4. `cargo fmt --check` - Ensures code adheres to formatting standards
+1.  `cargo check` - Verifies the code compiles without errors
+2.  `cargo test` - Runs all tests to ensure they pass
+3.  `cargo clippy` - Performs static analysis to catch common mistakes
+4.  `cargo fmt --check` - Ensures code adheres to formatting standards
 
 You can see the CI configuration in the `.github/workflows/ci.yml` file.
 
@@ -199,17 +243,18 @@ You can see the CI configuration in the `.github/workflows/ci.yml` file.
 
 To ensure code quality before commits are made, we provide Git hooks in the `hooks/` directory. These hooks automatically run tests and other checks before allowing commits.
 
-To install the hooks, follow the instructions in the [hooks/README.md](hooks/README.md) file.
+To install the hooks, follow the instructions in the `hooks/README.md` file.
 
 ## Contributing
 
-Contributions are welcome! Please feel free to open an issue or submit a pull request.
+Contributions are welcome\! Please feel free to open an issue or submit a pull request.
 
 Before submitting a PR, please make sure:
-1. All tests pass (`cargo test`)
-2. The code is properly formatted (`cargo fmt`)
-3. There are no clippy warnings (`cargo clippy`)
-4. You've added tests for any new functionality
+
+1.  All tests pass (`cargo test`)
+2.  The code is properly formatted (`cargo fmt`)
+3.  There are no clippy warnings (`cargo clippy`)
+4.  You've added tests for any new functionality
 
 ## License
 
