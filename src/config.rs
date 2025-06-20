@@ -64,6 +64,10 @@ pub struct ServerConfig {
     /// Service discovery URL for registering this server (None = no service discovery)
     #[serde(default)]
     pub discovery_url: Option<String>,
+
+    /// Maximum number of data points allowed in a single data request
+    #[serde(default = "default_max_data_points")]
+    pub max_data_points: usize,
 }
 
 /// Data processing configuration
@@ -211,6 +215,7 @@ impl Default for ServerConfig {
             port: default_port(),
             workers: None,
             discovery_url: None,
+            max_data_points: default_max_data_points(),
         }
     }
 }
@@ -240,6 +245,10 @@ fn default_interpolation() -> String {
 
 fn default_log_level() -> String {
     "info".to_string()
+}
+
+fn default_max_data_points() -> usize {
+    10_000_000 // 10 million points default
 }
 
 #[cfg(test)]

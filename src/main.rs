@@ -10,7 +10,9 @@ use tower_http::cors::CorsLayer;
 use tracing::info;
 
 use rossby::data_loader::load_netcdf;
-use rossby::handlers::{heartbeat_handler, image_handler, metadata_handler, point_handler};
+use rossby::handlers::{
+    data_handler, heartbeat_handler, image_handler, metadata_handler, point_handler,
+};
 use rossby::{
     generate_request_id, log_data_loaded, log_request_error, setup_logging, start_timed_operation,
     Config, Result, RossbyError,
@@ -118,6 +120,7 @@ async fn main() -> Result<()> {
         .route("/point", get(point_handler))
         .route("/image", get(image_handler))
         .route("/heartbeat", get(heartbeat_handler))
+        .route("/data", get(data_handler))
         .layer(CorsLayer::permissive())
         // Add tracing layer for request/response logging
         // Temporarily commenting out due to type issues

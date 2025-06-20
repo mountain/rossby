@@ -55,6 +55,7 @@ async fn start_test_server() -> SocketAddr {
                 port: bound_addr.port(),
                 workers: Some(1),
                 discovery_url: None,
+                max_data_points: 10_000_000, // Default 10 million points
             },
             ..Default::default()
         };
@@ -84,6 +85,7 @@ async fn start_test_server() -> SocketAddr {
                 "/heartbeat",
                 axum::routing::get(rossby::handlers::heartbeat_handler),
             )
+            .route("/data", axum::routing::get(rossby::handlers::data_handler))
             .layer(tower_http::cors::CorsLayer::permissive())
             .with_state(state);
 
@@ -336,6 +338,102 @@ async fn test_image_endpoint() {
 
     // Test error case - invalid variable
     let response = http_client::get(&addr, "/image?var=nonexistent&time_index=0")
+        .await
+        .expect("Failed to make request");
+
+    assert_eq!(response.status(), 400);
+}
+
+#[tokio::test]
+async fn test_data_endpoint() {
+    // Initialize test environment
+    let addr = init_test_environment().await;
+
+    // Test basic query - single variable, single time step
+    let response = http_client::get(&addr, "/data?vars=temperature&time_index=0")
+        .await
+        .expect("Failed to make request");
+
+    // Save the status and content type before we consume the response
+    let status = response.status();
+    let content_type = response
+        .headers()
+        .get("content-type")
+        .map(|v| v.to_str().unwrap_or("unknown"))
+        .unwrap_or("missing")
+        .to_string(); // Clone the string to avoid borrowing issues
+
+    println!(
+        "Data endpoint response: status={}, content-type={}",
+        status, content_type
+    );
+
+    // Get body as string if status is not 200
+    if status != 200 {
+        let body = response.text().await.expect("Failed to get response body");
+        println!("Error response body: {}", body);
+        assert_eq!(
+            status, 200,
+            "Expected 200 OK, got {} with body: {}",
+            status, body
+        );
+    } else {
+        // Convert to bytes for Arrow format checking
+        let bytes = response
+            .bytes()
+            .await
+            .expect("Failed to get response bytes");
+        assert_eq!(content_type, "application/vnd.apache.arrow.stream");
+        assert!(!bytes.is_empty(), "Arrow data should not be empty");
+    }
+
+    // Test with specific dimension selections
+    let response = http_client::get(
+        &addr,
+        "/data?vars=temperature,humidity&time_index=0&lat_range=10,30",
+    )
+    .await
+    .expect("Failed to make request");
+
+    assert_eq!(response.status(), 200);
+
+    // Test with layout specification
+    let response = http_client::get(
+        &addr,
+        "/data?vars=temperature&time_index=0&layout=latitude,longitude",
+    )
+    .await
+    .expect("Failed to make request");
+
+    assert_eq!(response.status(), 200);
+
+    // Add debug logging for nonexistent variable test
+    println!(
+        "Making request to: http://{}{}",
+        addr, "/data?vars=nonexistent"
+    );
+
+    // Test error case - invalid variable
+    let response = http_client::get(&addr, "/data?vars=nonexistent")
+        .await
+        .expect("Failed to make request");
+
+    let status = response.status();
+    println!("Invalid variable test response status: {}", status);
+
+    if status != 400 {
+        // Print the response body for debugging
+        let body = response.text().await.expect("Failed to get response body");
+        println!(
+            "Unexpected success response for nonexistent variable: {}",
+            body
+        );
+    }
+
+    assert_eq!(status, 400, "Expected 400 status for nonexistent variable");
+
+    // Test error case - missing required parameter
+    let response = http_client::get(&addr, "/data")
         .await
         .expect("Failed to make request");
 
