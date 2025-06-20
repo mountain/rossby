@@ -87,6 +87,14 @@ pub enum RossbyError {
     /// Server errors
     #[error("Server error: {message}")]
     Server { message: String },
+
+    /// Payload too large error
+    #[error("Payload too large: {message}. Requested points: {requested}, maximum allowed: {max_allowed}")]
+    PayloadTooLarge {
+        message: String,
+        requested: usize,
+        max_allowed: usize,
+    },
 }
 
 /// Convenience type alias for Results with RossbyError

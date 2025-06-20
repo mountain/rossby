@@ -50,6 +50,12 @@ parking_lot = "0.12"
 uuid = { version = "1.4", features = ["v4"] }
 chrono = { version = "0.4", features = ["serde"] }
 
+# Apache Arrow for data serialization
+arrow = "55.0.0"
+arrow-array = "55.0.0"
+arrow-schema = "55.0.0"
+arrow-ipc = "55.0.0"
+
 [dev-dependencies]
 # Testing
 criterion = { version = "0.5", features = ["html_reports"] }
