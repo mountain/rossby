@@ -1,6 +1,6 @@
 [package]
 name = "rossby"
-version = "0.0.1"
+version = "0.0.2"
 edition = "2021"
 authors = ["rossby contributors"]
 description = "A blazingly fast, in-memory, NetCDF-to-API server"
