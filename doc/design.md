@@ -148,5 +148,5 @@ The API uses a clear, prefix-based naming convention to create a self-documentin
     - Support for **nearest-neighbor** lookups for physical values that don't have an exact match.
     - Support for **linear interpolation** along non-spatial dimensions (e.g., time, level).
 - **Expanded Format Support:** Add readers for GRIB2, Zarr, or TileDB.
-- **Optional Visualization Enhancements:** While not a core feature, consider optional parameters for the `/image` endpoint to draw contour lines or vector overlays.
+- **Optional Visualization Enhancements:** While not a core feature, consider optional parameters for the `/image` endpoint such as pole enhancement for better visualization of polar regions.
 - **Authentication & Caching:** Implement an optional API key layer and an LRU caching mechanism for hybrid memory/disk access models to handle datasets larger than RAM.

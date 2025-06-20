@@ -69,10 +69,6 @@ pub struct ImageQuery {
     pub wrap_longitude: Option<bool>,
     /// Upsampling/downsampling quality (auto, nearest, bilinear, bicubic)
     pub resampling: Option<String>,
-    /// Whether to draw grid lines on the image
-    pub grid: Option<bool>,
-    /// Whether to draw coastlines on the image
-    pub coastlines: Option<bool>,
     /// Whether to enhance pole regions to reduce distortion
     pub enhance_poles: Option<bool>,
     /// Extra fields for arbitrary dimension values and indices
@@ -555,8 +551,6 @@ fn generate_image_response(state: Arc<AppState>, params: &ImageQuery) -> Result<
             "center",
             "wrap_longitude",
             "resampling",
-            "grid",
-            "coastlines",
             "enhance_poles",
         ]
         .contains(&key.as_str())
@@ -656,8 +650,8 @@ fn generate_image_response(state: Arc<AppState>, params: &ImageQuery) -> Result<
         "Image generation completed"
     );
 
-    // Note: Grid, coastlines, and pole enhancement features are not yet implemented
-    // These will be added in a future update
+    // Note: Pole enhancement feature is not yet implemented
+    // This will be added in a future update
 
     // Encode the image to the specified format
     debug!(

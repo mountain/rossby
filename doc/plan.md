@@ -262,7 +262,7 @@ graph TB
 
 ### Phase 8: Advanced Geography Features (Days 15-16)
 
-**Goal**: Enhancing the /image endpoint with comprehensive geographic visualization capabilities
+**Goal**: Enhancing the /image endpoint with geographic visualization capabilities
 
 1. **Map Projection and BBox Improvements**:
    - Support for different map centering options:
@@ -273,17 +273,12 @@ graph TB
    - Proper handling of regions spanning the dateline or prime meridian
    - Consistent orientation with north at the top and south at the bottom
 
-2. **Grid and Reference Features**:
-   - Dynamic grid line drawing with spacing based on viewport size
-   - Simplified coastlines for geographic context
-   - Semi-transparent overlays to maintain data visibility
-
-3. **Pole Enhancement**:
+2. **Pole Enhancement**:
    - Reduce distortion in polar regions
    - Apply gradual enhancement based on latitude
    - Preserve data accuracy while improving visualization
 
-4. **Interpolation Improvements**:
+3. **Interpolation Improvements**:
    - Automatic selection of interpolation method based on zoom level:
      - Bilinear for downsampling to prevent aliasing
      - Bicubic for significant upsampling for smoother results
