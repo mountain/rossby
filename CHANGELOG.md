@@ -11,6 +11,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Initial release of Rossby
 - Core functionality for loading NetCDF files into memory
 - HTTP API with support for metadata, point queries, and image generation
+- `/data` endpoint with Apache Arrow integration for efficient data extraction
 - Multiple interpolation methods (nearest, bilinear, bicubic)
 - Colormap rendering with various built-in colormaps
 - Server monitoring via heartbeat endpoint
