@@ -186,6 +186,55 @@ Returns a PNG or JPEG image rendering of a single variable over a specified regi
 
 -----
 
+### `GET /data`
+
+Returns multi-dimensional data subsets in Apache Arrow format for efficient consumption by data science and machine learning tools.
+
+**Query Parameters:**
+
+- `vars`: (required) Comma-separated list of variable names to extract (e.g., `t2m,u10`).
+- **Dimension Selectors**: For each dimension (e.g., `time`, `latitude`, `longitude`), you can specify:
+  - `<dim_name>=<value>`: Select a single slice by physical value (e.g., `time=1672531200`).
+  - `<dim_name>_range=<start_value>,<end_value>`: Select a closed interval range by physical values (e.g., `latitude_range=30,40`).
+  - `__<canonical_name>_index=<index>`: Select a single slice by raw index (e.g., `__time_index=0`).
+  - `__<canonical_name>_index_range=<start_index>,<end_index>`: Select a range by raw indices (e.g., `__longitude_index_range=10,20`).
+- `layout`: (optional) Comma-separated list of dimension names specifying the desired order for the output array (e.g., `layout=time,latitude,longitude`). If omitted, the native dimension order from the NetCDF file is used.
+
+**Response:**
+
+- Content-Type: `application/vnd.apache.arrow.stream`
+- Body: A binary Apache Arrow table containing:
+  - Coordinate columns for each dimension
+  - Data columns for each requested variable
+  - Metadata for reconstructing the N-dimensional arrays
+
+**Example:**
+
+```sh
+# Get temperature data for a specific time and region
+curl "http://127.0.0.1:8000/data?vars=t2m&time_index=0&lat_range=30,40&lon_range=130,150" -o tokyo_temp.arrow
+
+# Use a data science library (Python example)
+import pyarrow as pa
+import pandas as pd
+import numpy as np
+
+# Read the Arrow data
+with open('tokyo_temp.arrow', 'rb') as f:
+    reader = pa.ipc.open_stream(f)
+    table = reader.read_all()
+
+# Convert to pandas DataFrame
+df = table.to_pandas()
+
+# Extract data array with shape information from metadata
+shape = json.loads(table.schema.field('t2m').metadata[b'shape'])
+dims = json.loads(table.schema.field('t2m').metadata[b'dimensions'])
+t2m_array = np.array(df['t2m']).reshape(shape)
+```
+
+-----
+
 ### `GET /heartbeat`
 
 Returns a JSON object with server status, memory usage, and dataset information. Useful for monitoring and service health checks.
