@@ -349,7 +349,7 @@ async fn test_data_endpoint() {
     // Initialize test environment
     let addr = init_test_environment().await;
 
-    // Test basic query - single variable, single time step
+    // Test basic query with Arrow format (default) - single variable, single time step
     let response = http_client::get(&addr, "/data?vars=temperature&time_index=0")
         .await
         .expect("Failed to make request");
@@ -387,7 +387,7 @@ async fn test_data_endpoint() {
         assert!(!bytes.is_empty(), "Arrow data should not be empty");
     }
 
-    // Test with specific dimension selections
+    // Test with specific dimension selections (Arrow format)
     let response = http_client::get(
         &addr,
         "/data?vars=temperature,humidity&time_index=0&lat_range=10,30",
@@ -397,7 +397,7 @@ async fn test_data_endpoint() {
 
     assert_eq!(response.status(), 200);
 
-    // Test with layout specification
+    // Test with layout specification (Arrow format)
     let response = http_client::get(
         &addr,
         "/data?vars=temperature&time_index=0&layout=latitude,longitude",
@@ -406,6 +406,99 @@ async fn test_data_endpoint() {
     .expect("Failed to make request");
 
     assert_eq!(response.status(), 200);
+
+    // Test basic query with JSON format
+    let response = http_client::get(&addr, "/data?vars=temperature&time_index=0&format=json")
+        .await
+        .expect("Failed to make request");
+
+    // Save the status and content type
+    let status = response.status();
+    let content_type = response
+        .headers()
+        .get("content-type")
+        .map(|v| v.to_str().unwrap_or("unknown"))
+        .unwrap_or("missing")
+        .to_string();
+
+    println!(
+        "JSON data endpoint response: status={}, content-type={}",
+        status, content_type
+    );
+
+    assert_eq!(status, 200);
+    assert_eq!(content_type, "application/json");
+
+    // Parse the JSON response and check its structure
+    let body = response.text().await.expect("Failed to get response body");
+    let json: serde_json::Value = serde_json::from_str(&body).expect("Failed to parse JSON");
+
+    // Check the basic structure of the JSON response
+    assert!(
+        json.get("metadata").is_some(),
+        "JSON response should have a metadata field"
+    );
+    assert!(
+        json.get("data").is_some(),
+        "JSON response should have a data field"
+    );
+
+    // Check that the data field has our variable
+    let data = json.get("data").unwrap();
+    assert!(
+        data.get("temperature").is_some(),
+        "JSON data should contain the temperature variable"
+    );
+
+    // Check that the metadata has the expected fields
+    let metadata = json.get("metadata").unwrap();
+    assert!(
+        metadata.get("query").is_some(),
+        "Metadata should include query information"
+    );
+    assert!(
+        metadata.get("dimensions").is_some(),
+        "Metadata should include dimensions"
+    );
+    assert!(
+        metadata.get("variables").is_some(),
+        "Metadata should include variable metadata"
+    );
+
+    // Test JSON format with multiple variables
+    let response = http_client::get(
+        &addr,
+        "/data?vars=temperature,humidity&time_index=0&format=json",
+    )
+    .await
+    .expect("Failed to make request");
+
+    assert_eq!(response.status(), 200);
+    assert_eq!(
+        response.headers().get("content-type").unwrap(),
+        "application/json"
+    );
+
+    let body = response.text().await.expect("Failed to get response body");
+    let json: serde_json::Value = serde_json::from_str(&body).expect("Failed to parse JSON");
+
+    // Check that both variables are in the data field
+    let data = json.get("data").unwrap();
+    assert!(data.get("temperature").is_some());
+    assert!(data.get("humidity").is_some());
+
+    // Test invalid format
+    let response = http_client::get(&addr, "/data?vars=temperature&format=invalid")
+        .await
+        .expect("Failed to make request");
+
+    assert_eq!(
+        response.status(),
+        400,
+        "Expected 400 status for invalid format"
+    );
+
+    // Test error cases - common for both formats
 
     // Add debug logging for nonexistent variable test
     println!(
