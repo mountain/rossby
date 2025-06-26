@@ -248,7 +248,7 @@ fn default_log_level() -> String {
 }
 
 fn default_max_data_points() -> usize {
-    10_000_000 // 10 million points default
+    100_000_000 // 100 million points default
 }
 
 #[cfg(test)]
