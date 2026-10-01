@@ -23,7 +23,7 @@ exclude = [
 axum = "0.8"
 tokio = { version = "1", features = ["full"] }
 tower = "0.5"
-tower-http = { version = "0.6", features = ["cors", "trace"] }
+tower-http = { version = "0.7", features = ["cors", "trace"] }
 
 # NetCDF and data handling
 netcdf = { version = "0.12", features = ["static"], optional = true }
@@ -36,7 +36,7 @@ serde_json = "1"
 
 # Image generation
 image = "0.25"
-colorgrad = "0.8"
+colorgrad = "0.9"
 
 # Error handling and utilities
 thiserror = "2"
@@ -53,9 +53,9 @@ bytes = "1.11.1"
 futures = "0.3"
 
 # Apache Arrow for data serialization
-arrow = "58.1.0"
-arrow-array = "58.0.0"
-arrow-ipc = "58.0.0"
+arrow = "60.0.0"
+arrow-array = "60.0.0"
+arrow-ipc = "60.0.0"
 
 [dev-dependencies]
 # Testing
